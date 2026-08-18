@@ -1,61 +1,111 @@
-# Deploying Ride Lab
+# Setup and deployment
 
-The Supabase project is already live and migrated — nothing to do there. These steps only cover
-getting the code onto GitHub and Vercel.
+Everything the project needs is in this repository. The Supabase database, the Edge Functions, and
+the Vercel project are already live — this covers getting a working copy on a new machine, and
+what to do when something needs changing.
 
-## 1. Unpack
+## Get it running on a new machine
 
 ```bash
-tar -xzf ride-lab.tar.gz && cd ride-lab
+git clone https://github.com/dalemel3-cmd/ride-lab.git
+cd ride-lab
 npm install
 ```
 
-Git history is included; the initial commit is already made.
-
-## 2. Environment
-
-Create `.env` (it is gitignored — never commit it):
+Then create a file named exactly `.env` in the project root:
 
 ```
 VITE_SUPABASE_URL=https://egyxalxfvsxucwtyzvat.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon key from Supabase -> Settings -> API>
+VITE_SUPABASE_ANON_KEY=<the publishable key>
 ```
 
-Check it runs: `npm run dev`
+Get the key from [supabase.com/dashboard](https://supabase.com/dashboard) → **ride-lab** →
+**Settings** → **API**. Use the **publishable** key (`sb_publishable_…`) or the legacy **anon**
+key — never a `service_role` or `sb_secret_` key. `VITE_` variables are compiled into the
+JavaScript bundle and served to every visitor, so a secret key placed here is a public secret.
 
-## 3. GitHub
+`.env` is gitignored and must stay that way.
 
 ```bash
-gh repo create ride-lab --private --source=. --push
+npm run dev
 ```
 
-Or create `ride-lab` at github.com/new, then:
+**On Windows**, PowerShell writes the file reliably where Notepad tends to save `.env.txt`:
+
+```powershell
+Set-Content -Path .env -Value 'VITE_SUPABASE_URL=https://egyxalxfvsxucwtyzvat.supabase.co' -Encoding ascii
+Add-Content -Path .env -Value 'VITE_SUPABASE_ANON_KEY=<key>' -Encoding ascii
+```
+
+Vite reads `.env` only at startup, so restart the dev server after changing it.
+
+## Shipping a change
+
+`main` is connected to Vercel, so a push deploys:
 
 ```bash
-git remote add origin git@github.com:dalemel3-cmd/ride-lab.git
-git push -u origin main
+npm run check          # lint, build, and the metric tests
+git add -A
+git commit -m "..."
+git push
 ```
 
-## 4. Vercel
+Vercel builds in about 40 seconds. Watch it at [vercel.com/dashboard](https://vercel.com/dashboard).
 
-Either import the repo at vercel.com/new, or from the project directory:
+## Tests
 
 ```bash
-npx vercel --prod
+npm test               # metrics — pure functions, no browser needed
 ```
 
-Vercel auto-detects Vite. **Add both environment variables** from step 2 in
-Project Settings -> Environment Variables before the first production build — Vite inlines them at
-build time, so a build without them produces an app that cannot reach the database.
+The browser suites need a server running and Playwright installed:
 
-## 5. Install on your phone
+```bash
+npm install --no-save playwright && npx playwright install chromium
 
-Open the deployed URL in Safari or Chrome -> Share -> **Add to Home Screen**. It launches
-standalone, works offline, and queues rides written in dead zones until signal returns.
+npm run build && npm run preview        # leave running in another terminal
+npm run test:ui                          # full app, Supabase stubbed
 
-## First run
+npm run dev                              # queue suite wants the dev server
+APP_URL=http://127.0.0.1:5173 npm run test:queue
+```
 
-Create your account on the login screen (sign up, confirm by email, sign in). The Bentonville
-route library seeds itself automatically. Before your first ride, go to **Body** and record a
-baseline measurement, and set your max HR and study start date in **Settings** — every zone and
-every trend is calculated from those.
+`CHROMIUM_PATH` overrides the browser binary if Playwright's own download is unavailable.
+
+## Where everything lives
+
+| Thing | Where |
+| --- | --- |
+| Database schema | `db/*.sql`, applied in order |
+| Edge Functions | `supabase/functions/` — deployed separately, see below |
+| Strava / Fitbit setup | `docs/INTEGRATIONS.md` |
+| Conventions and gotchas | `CONTRIBUTING.md` |
+
+## Changing the database
+
+Add a new numbered file in `db/`, and apply it to Supabase **before** deploying code that uses it —
+PostgREST rejects inserts naming unknown columns, so a deploy that runs ahead of its migration
+fails every write. Never edit a migration that has already been applied.
+
+## Changing an Edge Function
+
+Editing the files under `supabase/functions/` does **not** deploy them — Vercel only builds the
+front end. Deploy with the Supabase CLI:
+
+```bash
+npx supabase functions deploy integrations
+```
+
+`oauth-callback` must keep JWT verification disabled (`--no-verify-jwt`), because the OAuth
+provider redirects a plain browser to it with no Authorization header.
+
+## Secrets live in two places
+
+Easily confused, and they behave differently:
+
+- **Vercel** → Project Settings → Environment Variables: the two `VITE_SUPABASE_*` values. Baked
+  into the bundle at build time, so changing one needs a redeploy to take effect.
+- **Supabase** → Edge Functions → Secrets: `APP_URL`, plus the four `STRAVA_*` / `FITBIT_*`
+  values. Read at invocation, so a change applies to the next call.
+
+`APP_URL` must match the deployed site, or connecting Strava will send you back to the wrong place.
