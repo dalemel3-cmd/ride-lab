@@ -9,7 +9,7 @@ import {
   PROVIDER_LABELS,
   PROVIDER_BLURBS,
 } from '../../data/integrations.js'
-import { formatShortDate } from '../../data/dates.js'
+import { formatShortDate, recordDate } from '../../data/dates.js'
 
 /**
  * Connect, sync, and disconnect Strava and Fitbit.
@@ -162,7 +162,7 @@ export default function ConnectionsCard({ showToast, refresh }) {
 
               {connection?.last_synced_at && (
                 <span className="muted">
-                  Last synced {formatShortDate(connection.last_synced_at.slice(0, 10))}
+                  Last synced {formatShortDate(recordDate(connection, 'last_synced_at'))}
                 </span>
               )}
 

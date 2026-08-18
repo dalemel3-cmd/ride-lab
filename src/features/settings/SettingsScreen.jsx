@@ -1,7 +1,14 @@
-import { useState } from 'react'
-import { Download, LogOut, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, Download, LogOut, RefreshCw } from 'lucide-react'
 import { supabase, clearSignedInBefore } from '../../supabaseClient.js'
-import { downloadExport, syncQueue, queueLength } from '../../data/store.js'
+import {
+  downloadExport,
+  syncQueue,
+  queueLength,
+  stuckEntries,
+  discardQueuedEntry,
+  STUCK_AFTER_ATTEMPTS,
+} from '../../data/store.js'
 import { predictedMaxHr } from '../../data/metrics.js'
 import { NUMERIC_BOUNDS, SURFACES } from '../../settings.js'
 import { ScienceNote } from '../../components/ui.jsx'
@@ -14,6 +21,18 @@ import ConnectionsCard from './ConnectionsCard.jsx'
  */
 export default function SettingsScreen({ settings, onUpdateSettings, showToast, setPending, refresh }) {
   const [syncing, setSyncing] = useState(false)
+  // queueLength() and stuckEntries() read localStorage, so they have to be held
+  // in state and refreshed after a sync — reading them during render would show
+  // a figure that never updates.
+  const [pendingCount, setPendingCount] = useState(0)
+  const [stuck, setStuck] = useState([])
+
+  const refreshQueueView = () => {
+    setPendingCount(queueLength())
+    setStuck(stuckEntries())
+  }
+
+  useEffect(refreshQueueView, [])
 
   const set = (key) => (event) => {
     const raw = event.target.value
@@ -28,6 +47,7 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
     try {
       const result = await syncQueue()
       setPending(result.remaining)
+      refreshQueueView()
       showToast(
         result.remaining > 0
           ? `${result.synced} synced, ${result.remaining} still waiting`
@@ -179,8 +199,8 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 style={{ fontSize: 'var(--text-base)' }}>Data</h3>
         <p className="muted" style={{ margin: 0 }}>
-          {queueLength() > 0
-            ? `${queueLength()} ${queueLength() === 1 ? 'entry is' : 'entries are'} saved on this device and waiting to reach the server.`
+          {pendingCount > 0
+            ? `${pendingCount} ${pendingCount === 1 ? 'entry is' : 'entries are'} saved on this device and waiting to reach the server.`
             : 'Everything is synced.'}
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -191,6 +211,63 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
             <Download size={16} aria-hidden="true" /> Export JSON
           </button>
         </div>
+
+        {stuck.length > 0 && (
+          // Without this, an entry that can never sync is indistinguishable
+          // from one merely waiting for signal: the banner stays up forever
+          // with no reason given and nothing the rider can do.
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              padding: 12,
+              border: '1px solid var(--status-warn)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--status-warn)' }}>
+              <AlertTriangle size={16} aria-hidden="true" />
+              <strong style={{ fontSize: 'var(--text-sm)' }}>
+                {stuck.length} {stuck.length === 1 ? 'entry keeps' : 'entries keep'} failing
+              </strong>
+            </div>
+
+            <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>
+              These have been retried {STUCK_AFTER_ATTEMPTS}+ times and are unlikely to succeed on
+              their own. Export first if you want a copy — discarding cannot be undone.
+            </p>
+
+            {stuck.map((entry) => (
+              <div
+                key={entry.id}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--text-sm)' }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>
+                    {entry.action} · {entry.table}
+                  </div>
+                  <div className="muted" style={{ wordBreak: 'break-word' }}>
+                    {entry.error}
+                  </div>
+                </div>
+                <button
+                  className="btn"
+                  style={{ padding: '6px 10px', minHeight: 36 }}
+                  onClick={() => {
+                    if (!window.confirm('Discard this entry permanently? It cannot be recovered.')) return
+                    discardQueuedEntry(entry.id)
+                    refreshQueueView()
+                    setPending(queueLength())
+                    showToast('Entry discarded')
+                  }}
+                >
+                  Discard
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <p className="muted" style={{ margin: 0 }}>
           The export contains every ride, measurement, and journal entry — the raw data behind every
           chart. Worth doing at the end of the study, and any time you want to hand someone the

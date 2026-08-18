@@ -73,6 +73,27 @@ export default function RecordRide({ onFinish, onCancel }) {
     return () => clearInterval(id)
   }, [state])
 
+  /**
+   * Ask the screen to stay awake.
+   *
+   * Best-effort — unsupported on iOS Safari, and the browser silently drops the
+   * lock whenever the tab is backgrounded, so this has to be callable again
+   * rather than requested once at the start.
+   */
+  const acquireWakeLock = useCallback(async () => {
+    if (!('wakeLock' in navigator) || wakeLockRef.current) return
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request('screen')
+      // The browser fires this when it takes the lock back; clearing the ref
+      // means the next re-acquire attempt is not skipped as already-held.
+      wakeLockRef.current.addEventListener?.('release', () => {
+        wakeLockRef.current = null
+      })
+    } catch {
+      /* denied or unsupported — recording continues either way */
+    }
+  }, [])
+
   const stopWatching = useCallback(() => {
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current)
@@ -85,6 +106,20 @@ export default function RecordRide({ onFinish, onCancel }) {
   }, [])
 
   useEffect(() => stopWatching, [stopWatching])
+
+  // Re-take the wake lock whenever the tab comes back to the foreground while
+  // recording. Browsers release it on every backgrounding — checking the map,
+  // taking a call — and without this the screen sleeps for the rest of the
+  // ride, which is exactly when the tab gets suspended and GPS points stop.
+  useEffect(() => {
+    if (state !== 'recording') return
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') acquireWakeLock()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [state, acquireWakeLock])
 
   const startWatching = useCallback(() => {
     if (!('geolocation' in navigator)) {
@@ -125,16 +160,7 @@ export default function RecordRide({ onFinish, onCancel }) {
 
     startedAtRef.current = Date.now()
     setState('recording')
-
-    // Best-effort: keeps the screen on so the browser doesn't suspend the tab
-    // mid-ride. Unsupported on iOS Safari, hence the silent catch.
-    try {
-      if ('wakeLock' in navigator) {
-        wakeLockRef.current = await navigator.wakeLock.request('screen')
-      }
-    } catch {
-      /* not available — recording continues regardless */
-    }
+    await acquireWakeLock()
   }
 
   function handlePause() {
@@ -148,6 +174,9 @@ export default function RecordRide({ onFinish, onCancel }) {
     startedAtRef.current = Date.now()
     startWatching()
     setState('recording')
+    // Pausing released the lock, so resuming has to take it again — otherwise
+    // the screen sleeps for every ride that was ever paused once.
+    acquireWakeLock()
   }
 
   function handleStop() {

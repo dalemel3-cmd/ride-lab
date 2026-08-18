@@ -31,9 +31,12 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
     [bodyComp],
   )
 
+  // If several rows somehow carry the flag, the earliest wins — a baseline is
+  // where the study started, so picking the newest (which newest-first order
+  // would do) would silently shrink every reported change.
   const baseline = useMemo(
-    () => bodyComp.find((m) => m.is_baseline) ?? chronological[0] ?? null,
-    [bodyComp, chronological],
+    () => chronological.find((m) => m.is_baseline) ?? chronological[0] ?? null,
+    [chronological],
   )
   const latest = chronological[chronological.length - 1] ?? null
 
@@ -49,6 +52,16 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
   const vo2Latest = latest ? estimateVo2Max(latest.resting_hr, settings.maxHr) : null
 
   async function handleSave(record) {
+    // Exactly one baseline, always. Marking a new one clears the old, because
+    // two flagged rows make "Baseline vs. now" depend on iteration order rather
+    // than on a decision the rider made.
+    if (record.is_baseline) {
+      const previous = bodyComp.filter((m) => m.is_baseline && m.id !== record.id)
+      for (const row of previous) {
+        await saveRow(TABLES.bodyComp, { ...row, is_baseline: false })
+      }
+    }
+
     const { synced } = await saveRow(TABLES.bodyComp, record)
     setPending(queueLength())
     showToast(synced ? 'Measurement saved' : 'Saved on device — will sync when back online')

@@ -252,16 +252,26 @@ export async function deleteRow(table, id) {
 let syncing = false
 
 /**
+ * After this many failed attempts an entry is treated as stuck rather than
+ * merely offline. Nothing is ever discarded — the flag exists so the UI can
+ * distinguish "waiting for signal" from "this will never succeed", which
+ * otherwise looks identical and leaves the sync banner up forever.
+ */
+export const STUCK_AFTER_ATTEMPTS = 5
+
+/**
  * Drain the offline queue.
  *
  * Successful ops are dropped; failures stay queued with an incremented
- * `retry_count` so nothing is ever discarded because the network was flaky.
+ * `retry_count` and the reason they failed, so nothing is lost to a flaky
+ * connection and a genuinely broken row can be explained rather than silently
+ * retried forever.
  */
 export async function syncQueue() {
   if (syncing) return { skipped: true, synced: 0, remaining: queueLength() }
 
   const queue = readQueue()
-  if (queue.length === 0) return { skipped: false, synced: 0, remaining: 0 }
+  if (queue.length === 0) return { skipped: false, synced: 0, remaining: 0, stuck: 0 }
 
   syncing = true
   const stillQueued = []
@@ -281,16 +291,55 @@ export async function syncQueue() {
           if (error) throw error
         }
         synced += 1
-      } catch {
-        stillQueued.push({ ...op, retry_count: (op.retry_count ?? 0) + 1 })
+      } catch (error) {
+        stillQueued.push({
+          ...op,
+          retry_count: (op.retry_count ?? 0) + 1,
+          last_error: String(error?.message ?? error),
+          last_attempt_at: new Date().toISOString(),
+        })
       }
     }
 
     writeQueue(stillQueued)
-    return { skipped: false, synced, remaining: stillQueued.length }
+    return {
+      skipped: false,
+      synced,
+      remaining: stillQueued.length,
+      stuck: stillQueued.filter((op) => (op.retry_count ?? 0) >= STUCK_AFTER_ATTEMPTS).length,
+    }
   } finally {
     syncing = false
   }
+}
+
+/**
+ * Queue entries that have failed enough times to be considered broken rather
+ * than merely offline, with the reason. Surfaced in Settings so a stuck entry
+ * can be understood instead of quietly blocking the sync banner.
+ */
+export function stuckEntries() {
+  return readQueue()
+    .filter((op) => (op.retry_count ?? 0) >= STUCK_AFTER_ATTEMPTS)
+    .map((op) => ({
+      id: op.id,
+      table: op.table,
+      action: op.action,
+      attempts: op.retry_count,
+      error: op.last_error ?? 'Unknown error',
+      queued_at: op.queued_at,
+    }))
+}
+
+/**
+ * Drop a single stuck entry.
+ *
+ * Deliberately explicit and never automatic: discarding a ride the rider
+ * logged is destructive, so it only happens when they ask for it, and the
+ * export in Settings is the way to keep a copy first.
+ */
+export function discardQueuedEntry(id) {
+  writeQueue(readQueue().filter((op) => op.id !== id))
 }
 
 // ---------------------------------------------------------------------------
