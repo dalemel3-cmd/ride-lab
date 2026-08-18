@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "env": { "browser": true, "es2024": true },
+  "rules": {
+    "no-unused-vars": "warn",
+    "react/react-in-jsx-scope": "off",
+    "react/jsx-key": "error",
+    "react/no-children-prop": "error"
+  }
+}
