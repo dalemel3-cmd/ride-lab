@@ -18,7 +18,17 @@ if (!isSupabaseConfigured) {
   )
 }
 
-export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
+// createClient throws on an empty URL, and it throws while this module is being
+// imported — before React mounts, so neither the error boundary nor the
+// "not configured" screen can render and the user gets a blank white page with
+// no explanation. Falling back to a syntactically valid placeholder keeps the
+// module loading so AuthGate can show a message that actually says what to fix.
+// Nothing is ever requested from this host: isSupabaseConfigured gates the UI
+// before any call is made.
+const PLACEHOLDER_URL = 'https://not-configured.supabase.co'
+const PLACEHOLDER_KEY = 'not-configured'
+
+export const supabase = createClient(supabaseUrl || PLACEHOLDER_URL, supabaseAnonKey || PLACEHOLDER_KEY, {
   auth: {
     // The phone should stay signed in for the whole 4-month study — being asked
     // to log in at a trailhead with no signal is how a ride goes unlogged.
