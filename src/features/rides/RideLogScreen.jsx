@@ -201,7 +201,29 @@ function RideCard({ ride, settings, onEdit, onDelete }) {
           <div className="muted">
             {formatShortDate(recordDate(ride))}
             {ride.surface && ` · ${ride.surface.replace('-', ' ')}`}
+            {ride.source && ` · via ${ride.source}`}
           </div>
+          {ride.source && ride.rpe == null && (
+            // Imported rides arrive without an RPE because no API can know how
+            // hard something felt, and it carries most of the training-load
+            // signal — so it is worth actively asking for.
+            <button
+              onClick={onEdit}
+              style={{
+                marginTop: 4,
+                padding: '2px 8px',
+                border: '1px solid var(--status-warn)',
+                borderRadius: 999,
+                background: 'none',
+                color: 'var(--status-warn)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Add RPE
+            </button>
+          )}
         </div>
         <button className="btn" style={{ padding: 8, minHeight: 'var(--tap-target)' }} onClick={onEdit} aria-label="Edit ride">
           <Pencil size={16} aria-hidden="true" />

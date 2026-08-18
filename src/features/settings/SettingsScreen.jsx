@@ -5,6 +5,7 @@ import { downloadExport, syncQueue, queueLength } from '../../data/store.js'
 import { predictedMaxHr } from '../../data/metrics.js'
 import { NUMERIC_BOUNDS, SURFACES } from '../../settings.js'
 import { ScienceNote } from '../../components/ui.jsx'
+import ConnectionsCard from './ConnectionsCard.jsx'
 
 /**
  * Settings, plus the two operational escapes: force a sync, and export
@@ -172,6 +173,8 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
           </div>
         </div>
       </section>
+
+      <ConnectionsCard showToast={showToast} refresh={refresh} />
 
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 style={{ fontSize: 'var(--text-base)' }}>Data</h3>
