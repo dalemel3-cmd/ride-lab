@@ -16,8 +16,8 @@ import {
 import {
   weeklyRollup,
   summarize,
-  beatsPerMile,
-  trendDelta,
+  efficiencyBySurface,
+  routeProgress,
   hrZoneRanges,
 } from '../../data/metrics.js'
 import { formatShortDate, formatDuration, studyWeek, toDateString, daysBetween } from '../../data/dates.js'
@@ -51,20 +51,20 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     [rides],
   )
 
+  // Split by surface: comparing a singletrack ride to a paved one measures the
+  // trail, not the rider. Only the dominant surface gets a headline number.
+  const bySurface = useMemo(() => efficiencyBySurface(rides), [rides])
+  const primarySurface = bySurface[0] ?? null
+  const routeGains = useMemo(() => routeProgress(rides), [rides])
+
   const efficiencySeries = useMemo(
     () =>
-      chronological
-        .map((r) => {
-          const bpm = beatsPerMile(r.avg_hr, r.duration_min, r.distance_mi)
-          if (bpm == null) return null
-          return {
-            date: formatShortDate(r.ridden_at.slice(0, 10)),
-            beatsPerMile: bpm,
-            route: r.route_name || 'Ride',
-          }
-        })
-        .filter(Boolean),
-    [chronological],
+      (primarySurface?.points ?? []).map((p) => ({
+        date: formatShortDate(p.date),
+        beatsPerMile: p.beatsPerMile,
+        route: p.route,
+      })),
+    [primarySurface],
   )
 
   const rpeVsHr = useMemo(
@@ -82,10 +82,8 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     [chronological],
   )
 
-  const efficiencyTrend = trendDelta(
-    efficiencySeries.map((d) => d.beatsPerMile),
-    { lowerIsBetter: true },
-  )
+  const efficiencyTrend = primarySurface?.trend ?? null
+  const surfaceLabel = (primarySurface?.surface ?? '').replace('-', ' ')
 
   const studyStart = settings.caseStudyStartDate
   const daysIn = Math.max(0, daysBetween(studyStart, toDateString()))
@@ -165,13 +163,16 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
       {/* ---------------------------------------------------------------- */}
       {efficiencySeries.length > 1 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <h3 style={{ fontSize: 'var(--text-lg)' }}>Heartbeats per mile</h3>
+          <div>
+            <h3 style={{ fontSize: 'var(--text-lg)' }}>Heartbeats per mile</h3>
+            <span className="muted">on {surfaceLabel} · your most-ridden surface</span>
+          </div>
 
           {efficiencyTrend && (
             <StatGrid min={150}>
-              <StatTile label="First ride" value={efficiencyTrend.first} unit="beats/mi" />
+              <StatTile label="First" value={efficiencyTrend.first} unit="beats/mi" />
               <StatTile
-                label="Latest ride"
+                label="Latest"
                 value={efficiencyTrend.last}
                 unit="beats/mi"
                 tone={efficiencyTrend.improved ? 'good' : 'bad'}
@@ -209,8 +210,76 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
             get without a lab, because it accounts for both speed and cost. A downward line means
             your cardiovascular system is doing the same mechanical work for less physiological
             expense: more blood per beat, more capillaries feeding the muscle, more mitochondria
-            turning oxygen into usable energy. Terrain and wind add noise ride to ride, so read the
-            trend across weeks, not any single point.
+            turning oxygen into usable energy.
+            <br />
+            <br />
+            Only {surfaceLabel} rides are counted here, because terrain swamps this number —
+            singletrack can cost half again as many beats per mile as pavement at identical
+            fitness. Wind, heat and how you slept still add noise ride to ride, so trust the shape
+            of the line over any single point.
+          </ScienceNote>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Same route, then vs now — the cleanest comparison available       */}
+      {/* ---------------------------------------------------------------- */}
+      {routeGains.length > 0 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h3 style={{ fontSize: 'var(--text-lg)' }}>Same route, then vs. now</h3>
+
+          {routeGains.map((r) => (
+            <div key={r.route} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-lg)' }}>
+                  {r.route}
+                </strong>
+                <span className="muted">{r.rides}× ridden</span>
+              </div>
+              <span className="muted">
+                {formatShortDate(r.firstDate)} → {formatShortDate(r.latestDate)}
+              </span>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginTop: 4 }}>
+                {r.speed && (
+                  <div>
+                    <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                      Average speed
+                    </div>
+                    <div style={{ fontSize: 'var(--text-base)' }}>
+                      {r.speed.first} →{' '}
+                      <strong style={{ color: r.speed.improved ? 'var(--status-success)' : 'var(--color-text)' }}>
+                        {r.speed.latest} mph
+                      </strong>
+                    </div>
+                  </div>
+                )}
+                {r.beatsPerMile && (
+                  <div>
+                    <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                      Beats per mile
+                    </div>
+                    <div style={{ fontSize: 'var(--text-base)' }}>
+                      {r.beatsPerMile.first} →{' '}
+                      <strong
+                        style={{
+                          color: r.beatsPerMile.improved ? 'var(--status-success)' : 'var(--color-text)',
+                        }}
+                      >
+                        {r.beatsPerMile.latest}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          <ScienceNote title="The comparison that actually controls for terrain">
+            Same trail, same climbs, same distance — so anything that changed is you, not the
+            course. This is the number to put in a post or hand to someone who asks whether the
+            training is working. Faster at the same heart rate, or the same speed at a lower one,
+            both mean the engine got bigger.
           </ScienceNote>
         </section>
       )}

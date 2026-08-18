@@ -23,6 +23,8 @@ import {
   trendDelta,
   beatsPerMile,
   efficiencyFactor,
+  efficiencyBySurface,
+  routeProgress,
   summarize,
 } from '../src/data/metrics.js'
 import { startOfWeek, daysBetween, studyWeek, formatDuration, formatStopwatch } from '../src/data/dates.js'
@@ -157,6 +159,37 @@ check('first week has two rides', weeks[0].rides, 2)
 check('first week distance sums', weeks[0].distanceMi, 22)
 check('first week load = 5×60 + 6×70 = 720', weeks[0].load, 720)
 check('rides with no date are skipped', weeklyRollup([{ distance_mi: 5 }]).length, 0)
+
+console.log('\nefficiencyBySurface — terrain must not masquerade as fitness')
+// A rider who improves on pavement but then switches to singletrack looks like
+// they got worse if the surfaces are pooled. They must not be pooled.
+const mixed = [
+  { ridden_at: '2026-05-01T12:00:00Z', avg_hr: 150, duration_min: 60, distance_mi: 15, surface: 'paved-trail' },
+  { ridden_at: '2026-05-08T12:00:00Z', avg_hr: 140, duration_min: 60, distance_mi: 16, surface: 'paved-trail' },
+  { ridden_at: '2026-05-15T12:00:00Z', avg_hr: 160, duration_min: 90, distance_mi: 10, surface: 'singletrack' },
+]
+const surfaces = efficiencyBySurface(mixed)
+check('splits by surface', surfaces.length, 2)
+check('most-ridden surface leads', surfaces[0].surface, 'paved-trail')
+check('pavement trend is computed within its own group', surfaces[0].trend?.improved, true)
+// Pooled, the last ride (1440 beats/mi on dirt) would swamp the pavement trend.
+check('singletrack is kept separate', surfaces[1].points.length, 1)
+check('rides with no heart rate are excluded', efficiencyBySurface([{ ridden_at: '2026-05-01T12:00:00Z', distance_mi: 10 }]).length, 0)
+
+console.log('\nrouteProgress — same trail, then vs now')
+const repeated = [
+  { ridden_at: '2026-05-01T12:00:00Z', route_name: 'Slaughter Pen Loop', avg_hr: 160, duration_min: 55, distance_mi: 8.5 },
+  { ridden_at: '2026-06-01T12:00:00Z', route_name: 'Slaughter Pen Loop', avg_hr: 147, duration_min: 43, distance_mi: 8.5 },
+  { ridden_at: '2026-05-10T12:00:00Z', route_name: 'Back 40', avg_hr: 150, duration_min: 130, distance_mi: 20 },
+]
+const gains = routeProgress(repeated)
+check('only routes ridden twice or more appear', gains.length, 1)
+check('names the route', gains[0].route, 'Slaughter Pen Loop')
+check('counts the rides', gains[0].rides, 2)
+check('faster on the same trail is an improvement', gains[0].speed?.improved, true)
+check('fewer beats on the same trail is an improvement', gains[0].beatsPerMile?.improved, true)
+check('a route ridden once is excluded', routeProgress([repeated[2]]).length, 0)
+check('rides with no route name are ignored', routeProgress([{ ridden_at: '2026-05-01T12:00:00Z' }]).length, 0)
 
 console.log('\nsummarize')
 const totals = summarize(rides)

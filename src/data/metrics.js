@@ -249,6 +249,96 @@ export function efficiencyFactor(distanceMi, durationMin, avgHrValue) {
   return Math.round((speed / hr) * 1000) / 1000
 }
 
+/**
+ * Beats-per-mile grouped by surface.
+ *
+ * Terrain dominates this metric — singletrack costs far more heartbeats per
+ * mile than pavement at any fitness level. Comparing a gravel ride to a road
+ * ride measures the trail, not the rider, so the series is split by surface
+ * and only ever compared within a group.
+ */
+export function efficiencyBySurface(rides = []) {
+  const groups = new Map()
+
+  for (const ride of [...rides].sort((a, b) => String(a.ridden_at).localeCompare(String(b.ridden_at)))) {
+    const bpm = beatsPerMile(ride.avg_hr, ride.duration_min, ride.distance_mi)
+    if (bpm === null) continue
+    const surface = ride.surface || 'unspecified'
+    if (!groups.has(surface)) groups.set(surface, [])
+    groups.get(surface).push({
+      date: String(ride.ridden_at).slice(0, 10),
+      beatsPerMile: bpm,
+      route: ride.route_name || 'Ride',
+    })
+  }
+
+  return [...groups.entries()]
+    .map(([surface, points]) => ({
+      surface,
+      points,
+      trend: trendDelta(
+        points.map((p) => p.beatsPerMile),
+        { lowerIsBetter: true },
+      ),
+    }))
+    // Most-ridden surface first: that is the one with a trend worth trusting.
+    .sort((a, b) => b.points.length - a.points.length)
+}
+
+/**
+ * First vs. most recent ride on each repeated route.
+ *
+ * The cleanest progress signal available without a lab. Same trail, same
+ * climbs, same distance — so a change in time or heart rate is a change in the
+ * rider rather than in the terrain.
+ */
+export function routeProgress(rides = []) {
+  const byRoute = new Map()
+
+  for (const ride of rides) {
+    if (!ride.route_name) continue
+    const key = ride.route_name.toLowerCase()
+    if (!byRoute.has(key)) byRoute.set(key, [])
+    byRoute.get(key).push(ride)
+  }
+
+  const results = []
+
+  for (const group of byRoute.values()) {
+    if (group.length < 2) continue
+    const sorted = [...group].sort((a, b) => String(a.ridden_at).localeCompare(String(b.ridden_at)))
+    const first = sorted[0]
+    const latest = sorted[sorted.length - 1]
+
+    const firstBpm = beatsPerMile(first.avg_hr, first.duration_min, first.distance_mi)
+    const latestBpm = beatsPerMile(latest.avg_hr, latest.duration_min, latest.distance_mi)
+    const firstSpeed = avgSpeed(first.distance_mi, first.duration_min)
+    const latestSpeed = avgSpeed(latest.distance_mi, latest.duration_min)
+
+    results.push({
+      route: latest.route_name,
+      rides: group.length,
+      firstDate: String(first.ridden_at).slice(0, 10),
+      latestDate: String(latest.ridden_at).slice(0, 10),
+      beatsPerMile:
+        firstBpm !== null && latestBpm !== null
+          ? { first: firstBpm, latest: latestBpm, change: latestBpm - firstBpm, improved: latestBpm < firstBpm }
+          : null,
+      speed:
+        firstSpeed !== null && latestSpeed !== null
+          ? {
+              first: Math.round(firstSpeed * 10) / 10,
+              latest: Math.round(latestSpeed * 10) / 10,
+              change: Math.round((latestSpeed - firstSpeed) * 10) / 10,
+              improved: latestSpeed > firstSpeed,
+            }
+          : null,
+    })
+  }
+
+  return results.sort((a, b) => b.rides - a.rides)
+}
+
 /** Headline totals for the whole study to date. */
 export function summarize(rides = []) {
   const totals = rides.reduce(
