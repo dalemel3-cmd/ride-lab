@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
-import { toDateString, formatShortDate } from '../../data/dates.js'
+import { toDateString, formatShortDate, recordDate } from '../../data/dates.js'
 import { ScalePicker, EmptyState } from '../../components/ui.jsx'
 
 /**
@@ -178,7 +178,7 @@ function JournalForm({ rides, onSave, onCancel }) {
             <option value="">Not about a specific ride</option>
             {rides.map((r) => (
               <option key={r.id} value={r.id}>
-                {formatShortDate(r.ridden_at.slice(0, 10))} — {r.route_name || 'Untitled ride'}
+                {formatShortDate(recordDate(r))} — {r.route_name || 'Untitled ride'}
               </option>
             ))}
           </select>

@@ -7,7 +7,7 @@
  * the case study makes.
  */
 
-import { startOfWeek, toDateString } from './dates.js'
+import { startOfWeek, toDateString, recordDate } from './dates.js'
 
 /**
  * Coerce a value to a number, treating "absent" as absent.
@@ -266,7 +266,7 @@ export function efficiencyBySurface(rides = []) {
     const surface = ride.surface || 'unspecified'
     if (!groups.has(surface)) groups.set(surface, [])
     groups.get(surface).push({
-      date: String(ride.ridden_at).slice(0, 10),
+      date: recordDate(ride),
       beatsPerMile: bpm,
       route: ride.route_name || 'Ride',
     })
@@ -318,8 +318,8 @@ export function routeProgress(rides = []) {
     results.push({
       route: latest.route_name,
       rides: group.length,
-      firstDate: String(first.ridden_at).slice(0, 10),
-      latestDate: String(latest.ridden_at).slice(0, 10),
+      firstDate: recordDate(first),
+      latestDate: recordDate(latest),
       beatsPerMile:
         firstBpm !== null && latestBpm !== null
           ? { first: firstBpm, latest: latestBpm, change: latestBpm - firstBpm, improved: latestBpm < firstBpm }

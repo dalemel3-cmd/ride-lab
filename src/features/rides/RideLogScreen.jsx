@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Plus, Satellite, Trash2, Pencil } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { avgSpeed, trainingLoad, hrZone, summarize } from '../../data/metrics.js'
-import { formatDuration, formatShortDate, toDateString, toTimeString, startOfWeek } from '../../data/dates.js'
+import { formatDuration, formatShortDate, toDateString, toTimeString, startOfWeek, recordDate } from '../../data/dates.js'
 import { StatGrid, StatTile, EmptyState } from '../../components/ui.jsx'
 import RideForm from './RideForm.jsx'
 import RecordRide from './RecordRide.jsx'
@@ -199,7 +199,7 @@ function RideCard({ ride, settings, onEdit, onDelete }) {
             {ride.route_name || 'Untitled ride'}
           </strong>
           <div className="muted">
-            {formatShortDate(ride.ridden_at.slice(0, 10))}
+            {formatShortDate(recordDate(ride))}
             {ride.surface && ` · ${ride.surface.replace('-', ' ')}`}
           </div>
         </div>

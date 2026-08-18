@@ -40,12 +40,16 @@ export default function RideForm({ routes, settings, initial, onSave, onCancel }
   function handleRouteChange(event) {
     const name = event.target.value
     const match = routes.find((r) => r.name === name)
+    // `||` would treat a typed 0 as empty and overwrite it — rare for distance,
+    // but entirely normal for elevation on the flat Greenway.
+    const keepOrFill = (current, fallback) => (current === '' || current === null || current === undefined ? (fallback ?? '') : current)
+
     setForm((f) => ({
       ...f,
       route_name: name,
       // Prefill from the route library, but never overwrite something typed.
-      distance_mi: f.distance_mi || (match?.distance_mi ?? ''),
-      elevation_ft: f.elevation_ft || (match?.elevation_ft ?? ''),
+      distance_mi: keepOrFill(f.distance_mi, match?.distance_mi),
+      elevation_ft: keepOrFill(f.elevation_ft, match?.elevation_ft),
       surface: match?.surface ?? f.surface,
     }))
   }

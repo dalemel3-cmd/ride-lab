@@ -27,7 +27,15 @@ import {
   routeProgress,
   summarize,
 } from '../src/data/metrics.js'
-import { startOfWeek, daysBetween, studyWeek, formatDuration, formatStopwatch } from '../src/data/dates.js'
+import {
+  startOfWeek,
+  daysBetween,
+  studyWeek,
+  formatDuration,
+  formatStopwatch,
+  recordDate,
+  toDateString,
+} from '../src/data/dates.js'
 
 let passed = 0
 let failed = 0
@@ -209,6 +217,28 @@ check('study week 1 is the start date itself', studyWeek('2026-05-01', '2026-05-
 check('day 7 is still week 1', studyWeek('2026-05-01', '2026-05-07'), 1)
 check('day 8 is week 2', studyWeek('2026-05-01', '2026-05-08'), 2)
 check('before the study starts is week 0', studyWeek('2026-05-01', '2026-04-01'), 0)
+// A 7pm Central ride is stored as 00:00Z the next day. Slicing the ISO string
+// reads the UTC date and files the ride under tomorrow, disagreeing with the
+// week header and the edit form. Evening rides are most rides.
+check(
+  'an evening ride keeps its own calendar date',
+  recordDate({ ridden_at: '2026-08-18T00:00:00.000Z' }),
+  '2026-08-17',
+)
+check(
+  'a midday ride is unaffected',
+  recordDate({ ridden_at: '2026-08-17T17:00:00.000Z' }),
+  '2026-08-17',
+)
+check(
+  'recordDate agrees with the value used for grouping',
+  recordDate({ ridden_at: '2026-08-18T02:30:00.000Z' }),
+  toDateString(new Date('2026-08-18T02:30:00.000Z')),
+)
+check('a missing timestamp falls back to today', recordDate({}), toDateString())
+check('an unparseable timestamp falls back to today', recordDate({ ridden_at: 'nonsense' }), toDateString())
+check('reads other date fields too', recordDate({ measured_at: '2026-08-18T00:00:00.000Z' }, 'measured_at'), '2026-08-17')
+
 check('formatDuration under an hour', formatDuration(48), '48m')
 check('formatDuration over an hour', formatDuration(84), '1h 24m')
 check('formatStopwatch pads seconds', formatStopwatch(84000), '1:24')

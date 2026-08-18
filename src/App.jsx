@@ -22,6 +22,9 @@ const NAV = [
 
 const VALID_SCREENS = new Set([...NAV.map((n) => n.key), 'settings'])
 
+// Marks that the starter route library has been planted once on this device.
+const ROUTES_SEEDED_KEY = 'ridelab_routes_seeded'
+
 export default function App() {
   const [screen, setScreenState] = useState(() => {
     const fromHash = window.location.hash.replace('#', '')
@@ -70,11 +73,29 @@ export default function App() {
 
     // First run on a new account: seed the Bentonville route library so the
     // ride form has something to pick from immediately.
-    if (rt.rows.length === 0 && !rt.fromCache) {
+    //
+    // The localStorage marker is what makes this once-only. Keyed on "an empty
+    // table" alone, deleting every route — a perfectly reasonable thing to do
+    // if you ride somewhere else — would silently resurrect all six on the next
+    // load, with no way to be rid of them.
+    const alreadySeeded = (() => {
+      try {
+        return localStorage.getItem(ROUTES_SEEDED_KEY) === '1'
+      } catch {
+        return false
+      }
+    })()
+
+    if (rt.rows.length === 0 && !rt.fromCache && !alreadySeeded) {
       const seeded = []
       for (const route of SEED_ROUTES) {
         const { row } = await saveRow(TABLES.routes, route)
         seeded.push(row)
+      }
+      try {
+        localStorage.setItem(ROUTES_SEEDED_KEY, '1')
+      } catch {
+        /* private mode — worst case the library seeds again next launch */
       }
       setRoutes(seeded)
     } else {

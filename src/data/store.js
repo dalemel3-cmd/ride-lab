@@ -165,15 +165,24 @@ export async function loadTable(table) {
     const { data, error } = await supabase.from(table).select('*')
     if (error) throw error
 
+    const queued = readQueue().filter((op) => op.table === table)
+
     // Rows still queued locally haven't reached the server yet — keep them, or
     // an unsynced ride would vanish from the list on refresh.
-    const pendingIds = new Set(
-      readQueue()
-        .filter((op) => op.table === table)
-        .map((op) => op.id),
+    const pendingWriteIds = new Set(
+      queued.filter((op) => op.action !== 'delete').map((op) => op.id),
     )
-    const pendingRows = cached.filter((r) => pendingIds.has(r.id))
-    const merged = sortRows(table, mergeById(data ?? [], pendingRows))
+    const pendingRows = cached.filter((r) => pendingWriteIds.has(r.id))
+
+    // Deletes made offline are only queued, so the row is still on the server.
+    // Without this the next successful fetch merges it straight back in and the
+    // ride the rider deleted reappears until the queue happens to drain.
+    const pendingDeleteIds = new Set(
+      queued.filter((op) => op.action === 'delete').map((op) => op.id),
+    )
+    const fromServer = (data ?? []).filter((r) => !pendingDeleteIds.has(r.id))
+
+    const merged = sortRows(table, mergeById(fromServer, pendingRows))
 
     writeCache(table, merged)
     return { rows: merged, fromCache: false }

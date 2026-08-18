@@ -79,6 +79,22 @@ export function studyWeek(startDateStr, dateStr) {
   return Math.floor(days / 7) + 1
 }
 
+/**
+ * The calendar date a timestamped record belongs to, in the program timezone.
+ *
+ * Always use this instead of slicing the ISO string. `ridden_at.slice(0, 10)`
+ * reads the UTC date, so a 7pm Central ride — stored as 00:00Z the next day —
+ * displays one day later than the week it is grouped under and than the date
+ * the edit form prefills. Evening rides are most rides, so the disagreement is
+ * the common case rather than an edge case.
+ */
+export function recordDate(record, field = 'ridden_at') {
+  const value = record?.[field]
+  if (!value) return toDateString()
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? toDateString() : toDateString(parsed)
+}
+
 /** Short human label, e.g. "May 1". */
 export function formatShortDate(dateStr) {
   const d = new Date(`${dateStr}T12:00:00Z`)

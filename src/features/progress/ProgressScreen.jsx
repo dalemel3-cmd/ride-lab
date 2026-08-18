@@ -20,7 +20,14 @@ import {
   routeProgress,
   hrZoneRanges,
 } from '../../data/metrics.js'
-import { formatShortDate, formatDuration, studyWeek, toDateString, daysBetween } from '../../data/dates.js'
+import {
+  formatShortDate,
+  formatDuration,
+  studyWeek,
+  toDateString,
+  daysBetween,
+  recordDate,
+} from '../../data/dates.js'
 import { StatGrid, StatTile, ScienceNote, EmptyState } from '../../components/ui.jsx'
 
 /**
@@ -77,7 +84,7 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
           // Ordinal index drives the colour split below, so later rides are
           // visually distinguishable from earlier ones at the same RPE.
           order: index,
-          date: formatShortDate(r.ridden_at.slice(0, 10)),
+          date: formatShortDate(recordDate(r)),
         })),
     [chronological],
   )

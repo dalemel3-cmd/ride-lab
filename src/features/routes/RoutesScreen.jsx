@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Plus, Trash2, Mountain } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { avgSpeed } from '../../data/metrics.js'
-import { formatShortDate, formatDuration } from '../../data/dates.js'
+import { formatShortDate, formatDuration, recordDate } from '../../data/dates.js'
 import { SURFACES, DIFFICULTIES } from '../../settings.js'
 import { EmptyState } from '../../components/ui.jsx'
 
@@ -145,7 +145,7 @@ export default function RoutesScreen({ routes, rides, refresh, showToast, setPen
                 <span className="muted">
                   First{' '}
                   <strong style={{ color: 'var(--color-text)' }}>
-                    {formatShortDate(chronological[0].ridden_at.slice(0, 10))}
+                    {formatShortDate(recordDate(chronological[0]))}
                   </strong>
                 </span>
                 {fastest && (

@@ -231,6 +231,54 @@ async function main() {
   // Idempotency: the retry must not create a second copy of the same ride.
   check('no duplicate ride is created', new Set(db.rides.map((r) => r.id)).size, 2)
 
+  console.log('\nDeleting offline')
+  // A row deleted offline is only removed locally — the server still has it.
+  // If a fetch lands before the queued delete syncs, a naive merge brings the
+  // ride back from the dead.
+  // A throwaway ride, logged online so the server really has it, then deleted.
+  // Deleting one of the two real rides would break every later assertion.
+  await page.locator('.nav-item', { hasText: 'Rides' }).click()
+  await page.getByRole('button', { name: /Log/ }).click()
+  await page.waitForSelector('#distance')
+  await page.fill('#route', 'Throwaway')
+  await page.fill('#distance', '1')
+  await page.fill('#duration', '5')
+  await page.getByRole('button', { name: 'Save ride' }).click()
+  await page.waitForTimeout(800)
+  check('the throwaway ride reaches the server', db.rides.length, 3)
+  const victimId = db.rides.find((r) => r.route_name === 'Throwaway').id
+
+  page.once('dialog', (d) => d.accept())
+  offline = true
+  // Scope to the throwaway's own card: two rides logged in the same minute sort
+  // arbitrarily, so .first() is not reliably the one we just made.
+  await page
+    .locator('article.card', { hasText: 'Throwaway' })
+    .getByRole('button', { name: 'Delete ride' })
+    .click()
+  await page.waitForTimeout(600)
+
+  const afterDelete = await page.evaluate(() => JSON.parse(localStorage.getItem('ridelab_rides') ?? '[]').length)
+  check('the ride disappears locally', afterDelete, 2)
+  check('the server still has it while offline', db.rides.length, 3)
+
+  // Network returns, but the queued delete has not run yet.
+  offline = false
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForTimeout(1200)
+  const stillGone = await page.evaluate(
+    (id) => !JSON.parse(localStorage.getItem('ridelab_rides') ?? '[]').some((r) => r.id === id),
+    victimId,
+  )
+  check('the deleted ride does not come back on refresh', stillGone, true)
+
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem('ridelab_offline_queue') ?? '[]').length === 0,
+    { timeout: 10000 },
+  )
+  check('the delete reaches the server', db.rides.length, 2)
+  check('only the throwaway was removed', db.rides.some((r) => r.route_name === 'Throwaway'), false)
+
   console.log('\nBody composition')
   await page.locator('.nav-item', { hasText: 'Body' }).click()
   await page.getByRole('button', { name: /Measure/ }).click()
