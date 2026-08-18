@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link2, RefreshCw, Unlink } from 'lucide-react'
 import {
   getIntegrationStatus,
+  getIntegrationConfig,
   connectProvider,
   disconnectProvider,
   syncIntegrations,
@@ -21,15 +22,46 @@ import { formatShortDate, recordDate } from '../../data/dates.js'
 
 const PROVIDERS = ['strava', 'fitbit']
 
+/** A copyable value for pasting into a provider's developer console. */
+function Field({ label, value }) {
+  return (
+    <div>
+      <div className="muted">{label}</div>
+      <code
+        style={{
+          display: 'block',
+          padding: '6px 8px',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--color-surface-raised)',
+          color: 'var(--color-text)',
+          wordBreak: 'break-all',
+          userSelect: 'all',
+        }}
+      >
+        {value}
+      </code>
+    </div>
+  )
+}
+
 export default function ConnectionsCard({ showToast, refresh }) {
   const [status, setStatus] = useState([])
+  const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState(null)
 
   const loadStatus = useCallback(async () => {
     try {
-      setStatus(await getIntegrationStatus())
+      // Both together: which providers are set up server-side, and which are
+      // actually connected. Connected-but-unconfigured is impossible, but
+      // configured-but-unconnected is the normal starting state.
+      const [connections, cfg] = await Promise.all([
+        getIntegrationStatus(),
+        getIntegrationConfig().catch(() => null),
+      ])
+      setStatus(connections)
+      setConfig(cfg)
       setError(null)
     } catch (err) {
       setError(String(err.message ?? err))
@@ -140,7 +172,7 @@ export default function ConnectionsCard({ showToast, refresh }) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <strong style={{ fontSize: 'var(--text-sm)' }}>{PROVIDER_LABELS[provider]}</strong>
-                {connection && (
+                {connection ? (
                   <span
                     style={{
                       padding: '2px 8px',
@@ -153,12 +185,48 @@ export default function ConnectionsCard({ showToast, refresh }) {
                   >
                     CONNECTED
                   </span>
+                ) : (
+                  config &&
+                  !config[provider] && (
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        border: '1px solid var(--color-text-muted)',
+                        color: 'var(--color-text-muted)',
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 700,
+                      }}
+                    >
+                      NEEDS SETUP
+                    </span>
+                  )
                 )}
               </div>
 
               <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>
                 {PROVIDER_BLURBS[provider]}
               </p>
+
+              {config && !config[provider] && !connection && (
+                // Say what is missing before the button is pressed. Sending
+                // someone to a provider's consent screen only to fail on the
+                // way back is the worst possible place to discover this.
+                <p
+                  className="muted"
+                  style={{
+                    margin: 0,
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--color-surface-raised)',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  API keys for {PROVIDER_LABELS[provider]} are not set yet. Register a developer
+                  app, then add its ID and secret in Supabase under Edge Functions → Secrets. Full
+                  steps are in <code>docs/INTEGRATIONS.md</code>.
+                </p>
+              )}
 
               {connection?.last_synced_at && (
                 <span className="muted">
@@ -181,7 +249,10 @@ export default function ConnectionsCard({ showToast, refresh }) {
                   <button
                     className="btn btn-primary"
                     onClick={() => handleConnect(provider)}
-                    disabled={busy !== null}
+                    // Disabled rather than hidden when unconfigured: the button
+                    // should still show what is on offer, just not pretend it
+                    // can work yet.
+                    disabled={busy !== null || (config ? !config[provider] : false)}
                   >
                     <Link2 size={16} aria-hidden="true" />
                     {busy === provider ? 'Opening…' : `Connect ${PROVIDER_LABELS[provider]}`}
@@ -191,6 +262,25 @@ export default function ConnectionsCard({ showToast, refresh }) {
             </div>
           )
         })}
+
+      {config?.callback_url && (
+        // Both providers ask for this when registering the developer app, and
+        // typing it from memory is how the redirect_uri mismatch happens. Shown
+        // so it can be copied exactly.
+        <details style={{ fontSize: 'var(--text-xs)' }}>
+          <summary style={{ color: 'var(--color-text-muted)', cursor: 'pointer' }}>
+            Values needed when registering a developer app
+          </summary>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            <Field label="Redirect / callback URL" value={config.callback_url} />
+            <Field
+              label="Strava — Authorization Callback Domain (domain only)"
+              value={new URL(config.callback_url).host}
+            />
+            <Field label="App URL currently configured" value={config.app_url ?? 'not set'} />
+          </div>
+        </details>
+      )}
 
       <p className="muted" style={{ margin: 0, lineHeight: 1.5, fontSize: 'var(--text-xs)' }}>
         Imported rides never overwrite anything you typed — an RPE you entered by hand survives

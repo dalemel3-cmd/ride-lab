@@ -36,6 +36,17 @@ async function callFunction(name, body) {
   return payload
 }
 
+/**
+ * Which providers have their server-side credentials configured.
+ *
+ * Returns booleans only — the secrets themselves never leave the server. This
+ * lets the UI say "Strava isn't set up yet" up front, rather than sending the
+ * rider to a provider and failing partway through.
+ */
+export async function getIntegrationConfig() {
+  return callFunction('integrations-config', {})
+}
+
 /** Which providers are connected, and when they last synced. */
 export async function getIntegrationStatus() {
   const { integrations } = await callFunction('integrations', { action: 'status' })
