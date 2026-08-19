@@ -20,6 +20,7 @@ const METRICS = [
   { key: 'body_fat_pct', label: 'Body fat', unit: '%', lowerIsBetter: true },
   { key: 'waist_in', label: 'Waist', unit: 'in', lowerIsBetter: true },
   { key: 'resting_hr', label: 'Resting HR', unit: 'bpm', lowerIsBetter: true },
+  { key: 'hrv_ms', label: 'HRV', unit: 'ms', lowerIsBetter: false },
 ]
 
 export default function BodyCompScreen({ bodyComp, settings, refresh, showToast, setPending }) {
@@ -46,6 +47,7 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
     body_fat_pct: m.body_fat_pct != null ? Number(m.body_fat_pct) : null,
     waist_in: m.waist_in != null ? Number(m.waist_in) : null,
     resting_hr: m.resting_hr != null ? Number(m.resting_hr) : null,
+    hrv_ms: m.hrv_ms != null ? Number(m.hrv_ms) : null,
   }))
 
   const vo2Baseline = baseline ? estimateVo2Max(baseline.resting_hr, settings.maxHr) : null
@@ -227,6 +229,7 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
                         entry.body_fat_pct != null && `${entry.body_fat_pct}% bf`,
                         entry.waist_in != null && `${entry.waist_in}" waist`,
                         entry.resting_hr != null && `${entry.resting_hr} bpm rest`,
+                        entry.hrv_ms != null && `${entry.hrv_ms} ms hrv`,
                       ]
                         .filter(Boolean)
                         .join(' · ') || 'No values recorded'}
@@ -258,6 +261,7 @@ function BodyForm({ hasBaseline, onSave, onCancel }) {
     waist_in: '',
     hip_in: '',
     resting_hr: '',
+    hrv_ms: '',
     // The first measurement is the baseline unless one already exists.
     is_baseline: !hasBaseline,
     notes: '',
@@ -279,6 +283,7 @@ function BodyForm({ hasBaseline, onSave, onCancel }) {
         waist_in: num(form.waist_in),
         hip_in: num(form.hip_in),
         resting_hr: num(form.resting_hr),
+        hrv_ms: num(form.hrv_ms),
         is_baseline: form.is_baseline,
         notes: form.notes || null,
       })
@@ -322,6 +327,10 @@ function BodyForm({ hasBaseline, onSave, onCancel }) {
           <p className="muted" style={{ margin: '6px 0 0' }}>
             Taken lying down, before getting out of bed.
           </p>
+        </div>
+        <div className="full">
+          <label htmlFor="hrv">HRV (ms)</label>
+          <input id="hrv" type="number" inputMode="numeric" step="1" value={form.hrv_ms} onChange={set('hrv_ms')} />
         </div>
         <div className="full">
           <label htmlFor="bodynotes">Notes</label>
