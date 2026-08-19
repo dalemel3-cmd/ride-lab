@@ -211,6 +211,7 @@ const GOOGLE_TYPES = {
   weight: { path: 'weight', field: 'weight', timeField: 'sample_time.physical_time' },
   bodyFat: { path: 'body-fat', field: 'body_fat', timeField: 'sample_time.physical_time' },
   sleep: { path: 'sleep', field: 'sleep', timeField: 'interval.civil_end_time' },
+  restingHeartRate: { path: 'daily-resting-heart-rate', field: 'daily_resting_heart_rate', timeField: 'date' },
 } as const
 
 const KG_TO_LBS = 2.20462
@@ -364,6 +365,9 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
         } else if (key === 'bodyFat') {
           const pct = findNumber(point, ['percentage', 'percent'])
           if (pct !== null) row.body_fat_pct = Math.round(pct * 10) / 10
+        } else if (key === 'restingHeartRate') {
+          const bpm = findNumber(point, ['beatsPerMinute', 'beats_per_minute', 'bpm'])
+          if (bpm !== null) row.resting_hr = Math.round(bpm)
         }
       }
     } catch (error) {
