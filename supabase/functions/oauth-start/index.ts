@@ -16,6 +16,15 @@ import {
   type Provider,
 } from '../_shared/providers.ts'
 
+/**
+ * Single source of truth for what may start a flow.
+ *
+ * This list previously repeated the provider names inline and was missed when
+ * google_health was added, so the flow was rejected with a 400 before it began
+ * while every other function already understood the provider.
+ */
+const SUPPORTED: Provider[] = ['strava', 'fitbit', 'google_health']
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
@@ -24,8 +33,12 @@ Deno.serve(async (req) => {
     if (!userId) return json({ error: 'Not signed in.' }, 401)
 
     const { provider, redirect_to } = await req.json().catch(() => ({}))
-    if (provider !== 'strava' && provider !== 'fitbit') {
-      return json({ error: 'provider must be "strava" or "fitbit".' }, 400)
+    if (!SUPPORTED.includes(provider)) {
+      // Naming what arrived turns a bare 400 into something diagnosable.
+      return json(
+        { error: `provider must be one of: ${SUPPORTED.join(', ')}. Received: ${provider ?? 'nothing'}.` },
+        400,
+      )
     }
 
     const admin = adminClient()

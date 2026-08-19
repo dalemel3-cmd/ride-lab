@@ -1,5 +1,5 @@
 /**
- * Shared OAuth + provider logic for Strava and Fitbit.
+ * Shared OAuth + provider logic for Strava, Fitbit, and Google Health.
  *
  * Everything that touches a client secret or a stored token lives here, and
  * here only runs server-side. The browser never sees a token: the integrations
@@ -115,7 +115,7 @@ export function authorizeUrl(provider: Provider, state: string): string {
 }
 
 function expiryToIso(payload: Record<string, unknown>): string | null {
-  // Strava returns an absolute epoch; Fitbit returns seconds-from-now.
+  // Strava returns an absolute epoch; Fitbit and Google return seconds-from-now.
   if (typeof payload.expires_at === 'number') {
     return new Date(payload.expires_at * 1000).toISOString()
   }
@@ -230,8 +230,8 @@ export async function refreshTokens(provider: Provider, refreshToken: string): P
 
   return {
     access_token: payload.access_token,
-    // Fitbit rotates the refresh token on every use; keeping the old one would
-    // break the next refresh permanently.
+    // Fitbit rotates the refresh token on every use, and Google omits it on
+    // refresh entirely; keeping the old one is required in both cases.
     refresh_token: payload.refresh_token ?? refreshToken,
     expires_at: expiryToIso(payload),
     scope: payload.scope ?? null,
