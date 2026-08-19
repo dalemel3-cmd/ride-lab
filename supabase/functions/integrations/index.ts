@@ -202,15 +202,14 @@ const GOOGLE_HEALTH_BASE = 'https://health.googleapis.com/v4'
  * filter expression wants snake_case (`body_fat`). Getting that backwards
  * returns a 400 that reads like an auth problem.
  *
- * `weight` and `resting-heart-rate` are the identifiers the docs imply but do
- * not state outright for these two metrics, so a mismatch is possible — the
- * `probe` action exists to check them against a live account rather than
- * shipping a guess as if it were verified.
+ * Confirmed against a live account with the `probe` action rather than assumed:
+ * `weight` and `body-fat` are correct, and `resting-heart-rate` is not a data
+ * type at all — Google rejects it with INVALID_PARENT_DATA_TYPE_COLLECTION. The
+ * `discover` action finds the real name instead of guessing a second time.
  */
 const GOOGLE_TYPES = {
   weight: { path: 'weight', field: 'weight', timeField: 'sample_time.physical_time' },
   bodyFat: { path: 'body-fat', field: 'body_fat', timeField: 'sample_time.physical_time' },
-  restingHr: { path: 'resting-heart-rate', field: 'resting_heart_rate', timeField: 'sample_time.physical_time' },
   sleep: { path: 'sleep', field: 'sleep', timeField: 'interval.civil_end_time' },
 } as const
 
@@ -290,6 +289,43 @@ function findTime(value: unknown, keys: string[]): string | null {
 
 const dayOf = (iso: string | null) => (iso ? iso.slice(0, 10) : null)
 
+/**
+ * The calendar date a measurement belongs to, in the rider's own local time.
+ *
+ * Every point carries both a UTC `physicalTime` and a `civilTime` with the
+ * local date already broken out. Slicing the UTC string files an evening
+ * measurement under the following day — the same mistake the app itself made
+ * before `recordDate` was introduced. The civil date is authoritative.
+ */
+function localDayOf(point: unknown): string | null {
+  const civil = findCivilDate(point)
+  if (civil) return civil
+  return dayOf(findTime(point, ['physicalTime', 'physical_time', 'startTime', 'endTime']))
+}
+
+/** Format a `civilTime.date` object as YYYY-MM-DD, at any depth. */
+function findCivilDate(value: unknown): string | null {
+  if (value == null || typeof value !== 'object') return null
+  const obj = value as Record<string, unknown>
+
+  const date = obj.date as Record<string, unknown> | undefined
+  if (
+    date &&
+    typeof date.year === 'number' &&
+    typeof date.month === 'number' &&
+    typeof date.day === 'number'
+  ) {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${date.year}-${pad(date.month)}-${pad(date.day)}`
+  }
+
+  for (const v of Object.values(obj)) {
+    const nested = findCivilDate(v)
+    if (nested !== null) return nested
+  }
+  return null
+}
+
 async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: string, sinceDays: number) {
   const token = await validAccessToken(admin, userId, 'google_health')
   if (!token) return { connected: false, imported: 0 }
@@ -311,23 +347,23 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
       const points = await googleListAll(token, cfg.path, filter)
 
       for (const point of points) {
-        const time = findTime(point, ['physicalTime', 'physical_time', 'startTime', 'endTime'])
-        const day = dayOf(time)
+        const day = localDayOf(point)
         if (!day) continue
         const row = touch(day)
 
         if (key === 'weight') {
-          // Google reports mass in kilograms; the app stores pounds.
+          // Confirmed by the probe: Google reports mass as `weightGrams`.
+          // Kilograms and pounds are kept as fallbacks in case another source
+          // reports differently, but grams is what a Withings scale sends.
+          const grams = findNumber(point, ['weightGrams', 'weight_grams', 'grams'])
           const kg = findNumber(point, ['kilograms', 'kg'])
           const lbs = findNumber(point, ['pounds', 'lbs'])
-          if (kg !== null) row.weight_lbs = Math.round(kg * KG_TO_LBS * 10) / 10
+          if (grams !== null) row.weight_lbs = Math.round((grams / 1000) * KG_TO_LBS * 10) / 10
+          else if (kg !== null) row.weight_lbs = Math.round(kg * KG_TO_LBS * 10) / 10
           else if (lbs !== null) row.weight_lbs = Math.round(lbs * 10) / 10
         } else if (key === 'bodyFat') {
           const pct = findNumber(point, ['percentage', 'percent'])
           if (pct !== null) row.body_fat_pct = Math.round(pct * 10) / 10
-        } else if (key === 'restingHr') {
-          const bpm = findNumber(point, ['bpm', 'beatsPerMinute', 'beats_per_minute', 'value'])
-          if (bpm !== null) row.resting_hr = Math.round(bpm)
         }
       }
     } catch (error) {
@@ -430,6 +466,84 @@ async function probeGoogleHealth(admin: ReturnType<typeof adminClient>, userId: 
   return { connected: true, types: out }
 }
 
+
+/**
+ * Find which data type identifiers this account actually supports.
+ *
+ * `resting-heart-rate` turned out not to exist, and the docs do not publish a
+ * complete list of identifiers. Rather than guess a second time, this asks the
+ * API: first for the data type collection itself, then by trying plausible
+ * names and reporting which are accepted. A 400 naming
+ * INVALID_PARENT_DATA_TYPE_COLLECTION means the identifier is wrong; a 200
+ * means it is real, whether or not the account has data for it.
+ */
+const CANDIDATE_TYPES = [
+  'heart-rate',
+  'daily-resting-heart-rate',
+  'resting-heart-rate-daily',
+  'heart-rate-summary',
+  'daily-heart-rate',
+  'cardio-fitness-score',
+  'vo2-max',
+  'heart-rate-variability',
+  'breathing-rate',
+  'respiratory-rate',
+  'steps',
+  'height',
+  'bmi',
+  'active-minutes',
+  'total-calories',
+]
+
+async function discoverGoogleTypes(admin: ReturnType<typeof adminClient>, userId: string) {
+  const token = await validAccessToken(admin, userId, 'google_health')
+  if (!token) return { connected: false }
+
+  // The collection endpoint is the authoritative answer if it exists; the
+  // candidate sweep below is only a fallback.
+  let listing: unknown = null
+  try {
+    const res = await fetch(`${GOOGLE_HEALTH_BASE}/users/me/dataTypes`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    })
+    const text = await res.text()
+    listing = { status: res.status, body: text.slice(0, 4000) }
+  } catch (error) {
+    listing = { error: String((error as Error).message ?? error) }
+  }
+
+  const since = new Date(Date.now() - 30 * 86400000).toISOString()
+  const valid: string[] = []
+  const invalid: string[] = []
+
+  for (const path of CANDIDATE_TYPES) {
+    // The filter field is the snake_case form of the kebab-case path.
+    const field = path.replace(/-/g, '_')
+    const { ok, status, body } = await googleGet(token, path, {
+      filter: `${field}.sample_time.physical_time >= "${since}"`,
+      page_size: '1',
+    })
+
+    if (ok) {
+      valid.push(`${path} (200)`)
+      continue
+    }
+
+    // Both an unknown data type and a wrong filter field return 400, so the
+    // status alone cannot separate them. Only the unsupported-type reason
+    // means the identifier itself is wrong; any other 400 proves the type
+    // exists and it was the filter that was rejected.
+    const detail = JSON.stringify(body)
+    if (detail.includes('INVALID_PARENT_DATA_TYPE_COLLECTION')) {
+      invalid.push(path)
+    } else {
+      valid.push(`${path} (${status}, type exists — filter rejected)`)
+    }
+  }
+
+  return { connected: true, collection: listing, valid, invalid }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
@@ -451,6 +565,10 @@ Deno.serve(async (req) => {
 
     if (action === 'probe') {
       return json(await probeGoogleHealth(admin, userId))
+    }
+
+    if (action === 'discover') {
+      return json(await discoverGoogleTypes(admin, userId))
     }
 
     if (action === 'disconnect') {
@@ -487,7 +605,7 @@ Deno.serve(async (req) => {
       return json({ results, errors: Object.keys(errors).length ? errors : undefined })
     }
 
-    return json({ error: 'action must be "status", "sync", "probe", or "disconnect".' }, 400)
+    return json({ error: 'action must be "status", "sync", "probe", "discover", or "disconnect".' }, 400)
   } catch (error) {
     return json({ error: String((error as Error).message ?? error) }, 500)
   }
