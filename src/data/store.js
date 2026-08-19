@@ -52,6 +52,13 @@ function readJson(key, fallback) {
     const parsed = JSON.parse(raw)
     return parsed ?? fallback
   } catch {
+    // Quarantine corrupted JSON so data isn't lost and app doesn't crash
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw) localStorage.setItem(`${key}_corrupted_${Date.now()}`, raw)
+    } catch {
+      /* ignore */
+    }
     return fallback
   }
 }
@@ -61,7 +68,19 @@ function writeJson(key, value) {
     localStorage.setItem(key, JSON.stringify(value))
     return true
   } catch {
-    return false
+    // QuotaExceededError handling: attempt to clear corrupted backups if quota is full
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const k = localStorage.key(i)
+        if (k && k.includes('_corrupted_')) {
+          localStorage.removeItem(k)
+        }
+      }
+      localStorage.setItem(key, JSON.stringify(value))
+      return true
+    } catch {
+      return false
+    }
   }
 }
 
@@ -279,6 +298,16 @@ export async function syncQueue() {
 
   try {
     for (const op of queue) {
+      // Exponential backoff: don't hammer the server if an op recently failed
+      const backoffSec = Math.min(300, Math.pow(2, op.retry_count ?? 0))
+      const lastTime = op.last_attempt_at ? new Date(op.last_attempt_at).getTime() : 0
+      const isDue = Date.now() - lastTime >= (op.retry_count ? backoffSec * 1000 : 0)
+
+      if (!isDue) {
+        stillQueued.push(op)
+        continue
+      }
+
       try {
         if (op.action === 'delete') {
           const { error } = await supabase.from(op.table).delete().eq('id', op.id)

@@ -224,21 +224,36 @@ interface GoogleListResponse {
   [key: string]: unknown
 }
 
-async function googleGet(token: string, path: string, params: Record<string, string>) {
+async function googleGet(token: string, path: string, params: Record<string, string>, retries = 2) {
   const url = new URL(`${GOOGLE_HEALTH_BASE}/users/me/dataTypes/${path}/dataPoints`)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  })
-  const text = await res.text()
-  let body: GoogleListResponse
-  try {
-    body = JSON.parse(text)
-  } catch {
-    body = { raw: text.slice(0, 500) }
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      })
+
+      // If rate limited or server overloaded, retry with exponential backoff
+      if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+        await new Promise((r) => setTimeout(r, (attempt + 1) * 600))
+        continue
+      }
+
+      const text = await res.text()
+      let body: GoogleListResponse
+      try {
+        body = JSON.parse(text)
+      } catch {
+        body = { raw: text.slice(0, 500) }
+      }
+      return { ok: res.ok, status: res.status, body }
+    } catch (error) {
+      if (attempt >= retries) throw error
+      await new Promise((r) => setTimeout(r, (attempt + 1) * 600))
+    }
   }
-  return { ok: res.ok, status: res.status, body }
+  return { ok: false, status: 500, body: { error: 'Exhausted retries' } }
 }
 
 /**
