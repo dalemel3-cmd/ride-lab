@@ -27,6 +27,19 @@ export default function JournalScreen({ journal, rides, refresh, showToast, setP
   const recentRides = useMemo(() => rides.slice(0, 15), [rides])
   const ridesById = useMemo(() => new Map(rides.map((r) => [r.id, r])), [rides])
 
+  // Group entries by month for the notebook view
+  const byMonth = useMemo(() => {
+    const groups = new Map()
+    for (const entry of journal) {
+      // Parse YYYY-MM-DD as UTC to avoid local timezone shifts changing the month
+      const date = new Date(`${entry.entry_date}T00:00:00Z`)
+      const monthStr = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+      if (!groups.has(monthStr)) groups.set(monthStr, [])
+      groups.get(monthStr).push(entry)
+    }
+    return [...groups.entries()]
+  }, [journal])
+
   async function handleSave(record) {
     const { synced } = await saveRow(TABLES.journal, record)
     setPending(queueLength())
@@ -63,42 +76,84 @@ export default function JournalScreen({ journal, rides, refresh, showToast, setP
         </EmptyState>
       )}
 
-      {journal.map((entry) => {
-        const ride = entry.ride_id ? ridesById.get(entry.ride_id) : null
-        return (
-          <article key={entry.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-lg)' }}>
-                  {formatShortDate(entry.entry_date)}
-                </strong>
-                {ride && (
-                  <div className="muted">after {ride.route_name || 'a ride'}</div>
-                )}
-              </div>
-              <button
-                className="btn"
-                style={{ padding: 8 }}
-                onClick={() => handleDelete(entry)}
-                aria-label="Delete entry"
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
-            </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {byMonth.map(([month, entries]) => (
+          <details
+            key={month}
+            className="card"
+            style={{ padding: 0, overflow: 'hidden', transition: 'all 0.2s ease-out' }}
+          >
+            <summary
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: 'var(--text-lg)',
+                userSelect: 'none',
+                background: 'var(--color-surface)',
+              }}
+            >
+              <span>{month}</span>
+              <span className="muted" style={{ fontSize: 'var(--text-sm)', fontWeight: 400 }}>
+                {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+              </span>
+            </summary>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 'var(--text-sm)' }}>
-              {entry.mood != null && <Chip label="Mood" value={entry.mood} />}
-              {entry.energy != null && <Chip label="Energy" value={entry.energy} />}
-              {entry.soreness != null && <Chip label="Soreness" value={entry.soreness} />}
-              {entry.sleep_hrs != null && <Chip label="Sleep" value={`${entry.sleep_hrs}h`} />}
-            </div>
+            <div
+              style={{
+                padding: '0 16px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+                borderTop: '1px solid var(--color-border)',
+                marginTop: 4,
+                paddingTop: 16,
+              }}
+            >
+              {entries.map((entry) => {
+                const ride = entry.ride_id ? ridesById.get(entry.ride_id) : null
+                return (
+                  <article key={entry.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-lg)' }}>
+                          {formatShortDate(entry.entry_date)}
+                        </strong>
+                        {ride && <div className="muted">after {ride.route_name || 'a ride'}</div>}
+                      </div>
+                      <button
+                        className="btn"
+                        style={{ padding: 8 }}
+                        onClick={() => handleDelete(entry)}
+                        aria-label="Delete entry"
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </button>
+                    </div>
 
-            {entry.body && (
-              <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{entry.body}</p>
-            )}
-          </article>
-        )
-      })}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 'var(--text-sm)' }}>
+                      {entry.mood != null && <Chip label="Mood" value={entry.mood} />}
+                      {entry.energy != null && <Chip label="Energy" value={entry.energy} />}
+                      {entry.soreness != null && <Chip label="Soreness" value={entry.soreness} />}
+                      {entry.sleep_hrs != null && <Chip label="Sleep" value={`${entry.sleep_hrs}h`} />}
+                    </div>
+
+                    {entry.body && (
+                      <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{entry.body}</p>
+                    )}
+                    
+                    {/* Visual separator for entries in the same month except the last one */}
+                    <div style={{ height: 1, background: 'var(--color-border)', marginTop: 8, opacity: 0.5 }} />
+                  </article>
+                )
+              })}
+            </div>
+          </details>
+        ))}
+      </div>
     </div>
   )
 }
