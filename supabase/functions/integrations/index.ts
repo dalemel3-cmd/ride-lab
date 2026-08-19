@@ -344,7 +344,8 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
   for (const [key, cfg] of Object.entries(GOOGLE_TYPES)) {
     if (key === 'sleep') continue
     try {
-      const filter = `${cfg.field}.${cfg.timeField} >= "${since}"`
+      const timeStr = key === 'restingHeartRate' ? since.slice(0, 10) : since
+      const filter = `${cfg.field}.${cfg.timeField} >= "${timeStr}"`
       const points = await googleListAll(token, cfg.path, filter)
 
       for (const point of points) {
