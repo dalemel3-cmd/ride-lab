@@ -13,12 +13,17 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { Download, Flame } from 'lucide-react'
 import {
   weeklyRollup,
   summarize,
   efficiencyBySurface,
   routeProgress,
   hrZoneRanges,
+  performanceManagementChart,
+  hrvAutonomicBands,
+  dailyReadiness,
+  substrateOxidation,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
@@ -28,24 +33,16 @@ import {
   daysBetween,
   recordDate,
 } from '../../data/dates.js'
-import { StatGrid, StatTile, ScienceNote, EmptyState } from '../../components/ui.jsx'
-
-/**
- * The case study view.
- *
- * Everything else in the app records; this screen argues. Each chart is paired
- * with what it means physiologically, because the point of the project is not
- * that the numbers moved — it is showing someone else why they moved, and what
- * they would have to do to move their own.
- */
+import { StatGrid, StatTile, ScienceNote, EmptyState, ReadinessDial, FormStatusBadge } from '../../components/ui.jsx'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
 
 const tooltipStyle = {
-  background: 'var(--color-surface-raised)',
+  background: 'rgba(11, 26, 43, 0.95)',
   border: '1px solid var(--color-border)',
   borderRadius: 8,
   color: 'var(--color-text)',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
 }
 
 export default function ProgressScreen({ rides, bodyComp, settings }) {
@@ -58,11 +55,68 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     [rides],
   )
 
-  // Split by surface: comparing a singletrack ride to a paved one measures the
-  // trail, not the rider. Only the dominant surface gets a headline number.
+  // Split by surface
   const bySurface = useMemo(() => efficiencyBySurface(rides), [rides])
   const primarySurface = bySurface[0] ?? null
   const routeGains = useMemo(() => routeProgress(rides), [rides])
+
+  // Performance Management Chart (PMC)
+  const pmcSeries = useMemo(
+    () => performanceManagementChart(rides, { defaultMaxHr: settings.maxHr }),
+    [rides, settings.maxHr],
+  )
+  const latestPmc = pmcSeries[pmcSeries.length - 1] ?? null
+
+  // HRV Autonomic Bands
+  const hrvBands = useMemo(() => hrvAutonomicBands(bodyComp), [bodyComp])
+  const latestHrvBand = hrvBands[hrvBands.length - 1] ?? null
+
+  // Baseline & Latest Body Comp
+  const sortedBody = useMemo(
+    () => [...bodyComp].sort((a, b) => a.measured_at.localeCompare(b.measured_at)),
+    [bodyComp],
+  )
+  const baselineBody = useMemo(
+    () => sortedBody.find((m) => m.is_baseline) ?? sortedBody[0] ?? null,
+    [sortedBody],
+  )
+  const latestBody = sortedBody[sortedBody.length - 1] ?? null
+
+  // Daily Readiness HUD Score
+  const readiness = useMemo(
+    () =>
+      dailyReadiness({
+        hrv: latestBody?.hrv_ms != null ? Number(latestBody.hrv_ms) : null,
+        hrvBaseline: latestHrvBand?.baselineHrv ?? (baselineBody?.hrv_ms != null ? Number(baselineBody.hrv_ms) : null),
+        restingHr: latestBody?.resting_hr != null ? Number(latestBody.resting_hr) : null,
+        restingHrBaseline: baselineBody?.resting_hr != null ? Number(baselineBody.resting_hr) : null,
+        recentTsb: latestPmc?.tsb ?? 0,
+      }),
+    [latestBody, baselineBody, latestHrvBand, latestPmc],
+  )
+
+  // Total Estimated Substrate Oxidation
+  const substrateTotals = useMemo(() => {
+    let fatGrams = 0
+    let carbGrams = 0
+    let totalKcal = 0
+    for (const r of rides) {
+      if (r.avg_hr && r.duration_min) {
+        const sub = substrateOxidation(r.avg_hr, r.duration_min, settings.maxHr)
+        if (sub) {
+          fatGrams += sub.fatGrams
+          carbGrams += sub.carbGrams
+          totalKcal += sub.totalKcal
+        }
+      }
+    }
+    return {
+      fatGrams: Math.round(fatGrams),
+      carbGrams: Math.round(carbGrams),
+      totalKcal: Math.round(totalKcal),
+      fatPounds: (fatGrams / 453.592).toFixed(2),
+    }
+  }, [rides, settings.maxHr])
 
   const efficiencySeries = useMemo(
     () =>
@@ -81,8 +135,6 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
         .map((r, index) => ({
           rpe: Number(r.rpe),
           avgHr: Number(r.avg_hr),
-          // Ordinal index drives the colour split below, so later rides are
-          // visually distinguishable from earlier ones at the same RPE.
           order: index,
           date: formatShortDate(recordDate(r)),
         })),
@@ -98,12 +150,52 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
   const progressPct = Math.min(100, Math.round((daysIn / (settings.caseStudyWeeks * 7)) * 100))
 
   const zoneRanges = hrZoneRanges(settings.maxHr)
-
-  // Split the scatter in half so "first half vs second half" reads directly off
-  // the chart — the single clearest way to show the adaptation.
   const midpoint = Math.floor(rpeVsHr.length / 2)
   const firstHalf = rpeVsHr.slice(0, midpoint)
   const secondHalf = rpeVsHr.slice(midpoint)
+
+  function handleExportCaseStudy() {
+    const lines = [
+      `# 16-Week Cycling Physiological Case Study Report`,
+      `**Generated:** ${new Date().toISOString().slice(0, 10)} | **Study Week:** ${currentWeek} of ${settings.caseStudyWeeks}`,
+      ``,
+      `## 1. Executive Summary & Telemetry`,
+      `- **Total Rides:** ${totals.rides}`,
+      `- **Total Distance:** ${totals.distanceMi} miles`,
+      `- **Total Saddle Time:** ${formatDuration(totals.durationMin)}`,
+      `- **Total Elevation Climbed:** ${totals.elevationFt.toLocaleString()} ft`,
+      `- **Estimated Energy Burned:** ${substrateTotals.totalKcal.toLocaleString()} kcal (${substrateTotals.fatGrams}g Fat [~${substrateTotals.fatPounds} lbs] / ${substrateTotals.carbGrams}g Carbs)`,
+      ``,
+      `## 2. Aerobic Decoupling & Efficiency (${surfaceLabel || 'Primary Surface'})`,
+      efficiencyTrend
+        ? `- **Initial Efficiency:** ${efficiencyTrend.first} beats/mile\n- **Current Efficiency:** ${efficiencyTrend.last} beats/mile\n- **Net Adaptation:** ${efficiencyTrend.change} beats/mile (${efficiencyTrend.pctChange}% change)`
+        : `- Insufficient single-surface rides recorded yet.`,
+      ``,
+      `## 3. Banister Performance Management & Autonomic State`,
+      latestPmc
+        ? `- **Fitness (CTL - 42d):** ${latestPmc.ctl}\n- **Fatigue (ATL - 7d):** ${latestPmc.atl}\n- **Form (TSB):** ${latestPmc.tsb} (${latestPmc.status})`
+        : `- No load history available.`,
+      latestBody
+        ? `- **Current Resting HR:** ${latestBody.resting_hr ?? '—'} bpm\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms ?? '—'} ms\n- **Autonomic Status:** ${latestHrvBand?.autonomicState ?? 'Normal'}`
+        : ``,
+      ``,
+      `## 4. Repeated Route Progress (Identical Course Control)`,
+      ...routeGains.map(
+        (r) =>
+          `### ${r.route} (${r.rides}x)\n- Dates: ${r.firstDate} → ${r.latestDate}\n- Speed: ${r.speed?.first ?? '—'} → ${r.speed?.latest ?? '—'} mph\n- Cardiac Cost: ${r.beatsPerMile?.first ?? '—'} → ${r.beatsPerMile?.latest ?? '—'} beats/mi`,
+      ),
+    ]
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `cycling-case-study-week-${currentWeek}-${toDateString()}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   if (rides.length === 0) {
     return (
@@ -112,8 +204,7 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
           <h2>Progress</h2>
         </div>
         <EmptyState>
-          Log a few rides and this page fills in: weekly volume, training load, and whether the same
-          effort is costing you fewer heartbeats.
+          Log a few rides and this page fills in: PMC fitness tracking, HRV autonomic balance, and aerobic decoupling.
         </EmptyState>
       </div>
     )
@@ -123,10 +214,23 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     <div className="screen">
       <div className="screen-header">
         <h2>Progress</h2>
-        <span className="muted">
-          Week {currentWeek} of {settings.caseStudyWeeks}
-        </span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            className="btn btn-primary"
+            onClick={handleExportCaseStudy}
+            style={{ padding: '8px 12px', minHeight: 36, fontSize: 'var(--text-xs)' }}
+            title="Download formatted Case Study Markdown Report"
+          >
+            <Download size={15} aria-hidden="true" /> Export Study
+          </button>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', fontWeight: 600 }}>
+            W{currentWeek}/{settings.caseStudyWeeks}
+          </span>
+        </div>
       </div>
+
+      {/* Cyber-Athletic Readiness & Recovery HUD */}
+      <ReadinessDial readiness={readiness} />
 
       {/* Study progress bar */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -164,6 +268,113 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
         />
         <StatTile label="Total load" value={totals.load.toLocaleString()} />
       </StatGrid>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Performance Management Chart (PMC: CTL / ATL / TSB)               */}
+      {/* ---------------------------------------------------------------- */}
+      {pmcSeries.length > 2 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <h3 style={{ fontSize: 'var(--text-lg)' }}>Performance Management (PMC)</h3>
+              <span className="muted">Banister Impulse-Response: Fitness (CTL) vs Fatigue (ATL)</span>
+            </div>
+            {latestPmc && <FormStatusBadge status={latestPmc.status} tone={latestPmc.tone} />}
+          </div>
+
+          {latestPmc && (
+            <StatGrid min={110}>
+              <StatTile label="Fitness (CTL)" value={latestPmc.ctl} unit="42d" />
+              <StatTile label="Fatigue (ATL)" value={latestPmc.atl} unit="7d" />
+              <StatTile
+                label="Form (TSB)"
+                value={latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb}
+                tone={latestPmc.tone}
+                hint={latestPmc.status}
+              />
+            </StatGrid>
+          )}
+
+          <div className="card">
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={pmcSeries} margin={CHART_MARGIN}>
+                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
+                <XAxis dataKey="date" stroke="var(--color-text-muted)" tick={{ fontSize: 11 }} />
+                <YAxis stroke="var(--color-text-muted)" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Line type="monotone" dataKey="ctl" name="Fitness (CTL 42d)" stroke="var(--color-accent)" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="atl" name="Fatigue (ATL 7d)" stroke="var(--zone-4)" strokeWidth={1.5} dot={false} />
+                <Line type="monotone" dataKey="tsb" name="Form (TSB)" stroke="var(--status-success)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+            <p className="muted" style={{ margin: '8px 0 0', fontSize: 'var(--text-xs)' }}>
+              Teal = Chronic Training Load (Fitness) · Orange = Acute Fatigue · Green Dotted = Training Stress Balance (Form)
+            </p>
+          </div>
+
+          <ScienceNote title="The Banister Impulse-Response Model">
+            Fitness (CTL) takes ~6 weeks to build and decays slowly; Fatigue (ATL) spikes immediately and dissipates in ~7 days. 
+            <strong> Training Stress Balance (TSB = CTL − ATL)</strong> reveals your physiological readiness: 
+            negative values (−10 to −30) represent productive progressive overload; positive values (+5 to +20) represent peak race form.
+          </ScienceNote>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
+      {/* HRV Autonomic Baseline & Smallest Worthwhile Change (SWC) Bands    */}
+      {/* ---------------------------------------------------------------- */}
+      {hrvBands.length > 2 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <h3 style={{ fontSize: 'var(--text-lg)' }}>Autonomic HRV & SWC Bands</h3>
+            <span className="muted">Plews et al. 7-Day Rolling ln(rMSSD) Normal Range</span>
+          </div>
+
+          <div className="card">
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={hrvBands} margin={CHART_MARGIN}>
+                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
+                <XAxis dataKey="date" stroke="var(--color-text-muted)" tick={{ fontSize: 11 }} />
+                <YAxis stroke="var(--color-text-muted)" tick={{ fontSize: 11 }} domain={['dataMin - 10', 'dataMax + 10']} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Line type="monotone" dataKey="upperBand" name="Upper SWC Band" stroke="rgba(52, 211, 153, 0.4)" strokeDasharray="2 2" dot={false} />
+                <Line type="monotone" dataKey="lowerBand" name="Lower SWC Band" stroke="rgba(248, 113, 113, 0.4)" strokeDasharray="2 2" dot={false} />
+                <Line type="monotone" dataKey="baselineHrv" name="7-Day Baseline" stroke="var(--color-text-muted)" strokeWidth={1.5} dot={false} />
+                <Line type="monotone" dataKey="hrv" name="Daily HRV (ms)" stroke="var(--color-accent)" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <ScienceNote title="Autonomic Nervous System Regulation">
+            Raw daily HRV bounces with hydration and digestion. Sports scientists use a 7-day rolling mean bounded by the 
+            <strong> Smallest Worthwhile Change (±0.5 × SD)</strong>. When daily HRV drops below the red band alongside elevated resting HR, 
+            sympathetic stress dominates — your body is requesting a recovery day.
+          </ScienceNote>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Substrate Oxidation (FatMax vs Carb Utilization)                  */}
+      {/* ---------------------------------------------------------------- */}
+      {substrateTotals.totalKcal > 0 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Flame size={20} color="var(--zone-4)" />
+            <h3 style={{ fontSize: 'var(--text-lg)' }}>Metabolic Substrate Utilization</h3>
+          </div>
+
+          <StatGrid min={140}>
+            <StatTile label="Estimated Fat Burned" value={`${substrateTotals.fatGrams}g`} hint={`~${substrateTotals.fatPounds} lbs fat oxidized`} />
+            <StatTile label="Carbs Oxidized" value={`${substrateTotals.carbGrams}g`} hint="Glycogen energy consumed" />
+            <StatTile label="Total Energy" value={substrateTotals.totalKcal.toLocaleString()} unit="kcal" />
+          </StatGrid>
+
+          <ScienceNote title="FatMax & Aerobic Metabolism">
+            In Zone 2 (60–70% max HR), fat oxidation peaks (FatMax), sparing glycogen and building mitochondrial enzyme density. 
+            As intensity enters Zone 4 and 5, your muscles shift almost exclusively to carbohydrate glycolysis.
+          </ScienceNote>
+        </section>
+      )}
 
       {/* ---------------------------------------------------------------- */}
       {/* Headline: aerobic efficiency                                      */}
@@ -216,20 +427,13 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
             duration, divided by distance. It is the closest thing to a fitness measurement you can
             get without a lab, because it accounts for both speed and cost. A downward line means
             your cardiovascular system is doing the same mechanical work for less physiological
-            expense: more blood per beat, more capillaries feeding the muscle, more mitochondria
-            turning oxygen into usable energy.
-            <br />
-            <br />
-            Only {surfaceLabel} rides are counted here, because terrain swamps this number —
-            singletrack can cost half again as many beats per mile as pavement at identical
-            fitness. Wind, heat and how you slept still add noise ride to ride, so trust the shape
-            of the line over any single point.
+            expense.
           </ScienceNote>
         </section>
       )}
 
       {/* ---------------------------------------------------------------- */}
-      {/* Same route, then vs now — the cleanest comparison available       */}
+      {/* Same route, then vs now                                           */}
       {/* ---------------------------------------------------------------- */}
       {routeGains.length > 0 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -284,9 +488,7 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
 
           <ScienceNote title="The comparison that actually controls for terrain">
             Same trail, same climbs, same distance — so anything that changed is you, not the
-            course. This is the number to put in a post or hand to someone who asks whether the
-            training is working. Faster at the same heart rate, or the same speed at a lower one,
-            both mean the engine got bigger.
+            course.
           </ScienceNote>
         </section>
       )}
@@ -331,10 +533,7 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
 
           <ScienceNote title="What to look for">
             Each dot is one ride: how hard it felt (RPE) against what your heart actually did. As
-            fitness improves, the teal dots should sit <em>below</em> the grey ones — the same
-            perceived effort now costs fewer beats per minute. If teal sits higher at the same RPE,
-            that is usually fatigue, heat, dehydration, or under-recovery rather than lost fitness,
-            and the journal entries for those days will normally say so.
+            fitness improves, the teal dots should sit <em>below</em> the grey ones.
           </ScienceNote>
         </section>
       )}
@@ -360,7 +559,7 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
             </ResponsiveContainer>
           </div>
 
-          <h3 style={{ fontSize: 'var(--text-lg)' }}>Training load</h3>
+          <h3 style={{ fontSize: 'var(--text-lg)' }}>Weekly load</h3>
           <div className="card">
             <ResponsiveContainer width="100%" height={190}>
               <LineChart
@@ -382,15 +581,6 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
               </LineChart>
             </ResponsiveContainer>
           </div>
-
-          <ScienceNote title="Load, and why it should climb slowly">
-            Training load is RPE × minutes — an hour at RPE 5 scores 300. It captures something raw
-            mileage misses: a short hard ride and a long easy one can stress the body about equally.
-            The usual guidance is to let weekly load rise gradually rather than in jumps, because
-            connective tissue adapts far more slowly than the cardiovascular system does. Your heart
-            and lungs will be ready for big weeks well before your knees and tendons are, and that
-            gap is where most new riders get hurt.
-          </ScienceNote>
         </section>
       )}
 
@@ -428,28 +618,9 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
               </div>
             ))}
           </div>
-
-          <ScienceNote title="The most common beginner mistake">
-            Riding everything at a middling, moderately-hard pace. It feels productive and builds
-            less than it should: too hard to accumulate real aerobic volume, too easy to drive
-            top-end adaptation. Most endurance programmes put roughly 80% of time in zones 1–2 and
-            the remaining 20% genuinely hard. Zone 2 in particular is where the slow structural
-            adaptations happen — new capillaries, denser mitochondria, better fat metabolism — and
-            it is the zone that most rewards patience. Calculated from a max HR of {settings.maxHr}{' '}
-            bpm, which you can change in Settings.
-          </ScienceNote>
         </section>
-      )}
-
-      {bodyComp.length > 1 && (
-        <ScienceNote title="Reading the body composition data">
-          Endurance training changes body composition more slowly and less dramatically than most
-          people expect, and the scale is the least informative instrument you own — it cannot
-          distinguish fat, muscle, glycogen, or water. Waist measurement and resting heart rate
-          usually move first and mean more. Four months is enough to see a real trend; it is not
-          enough to see a transformation, and any honest case study should say so.
-        </ScienceNote>
       )}
     </div>
   )
 }
+

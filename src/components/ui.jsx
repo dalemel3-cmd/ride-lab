@@ -223,3 +223,126 @@ export function ScalePicker({ label, value, onChange, lowLabel, highLabel, id })
 export function EmptyState({ children }) {
   return <div className="empty-state">{children}</div>
 }
+
+/**
+ * Cyber-Athletic Readiness & Recovery HUD Dial.
+ *
+ * Renders an interactive, gamified 0–100 autonomic readiness gauge with
+ * dynamic glowing borders and physiological training advice.
+ */
+export function ReadinessDial({ readiness }) {
+  if (!readiness) return null
+  const { score, zone, label, advice } = readiness
+
+  const glowClass = zone === 'green' ? 'glow-emerald' : zone === 'amber' ? 'glow-amber' : 'glow-crimson'
+  const color = zone === 'green' ? 'var(--status-success)' : zone === 'amber' ? 'var(--status-warn)' : 'var(--status-error)'
+
+  return (
+    <div
+      className={`card card-glass-glow ${glowClass}`}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        borderLeft: `4px solid ${color}`,
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            style={{
+              display: 'inline-block',
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: color,
+              boxShadow: `0 0 10px ${color}`,
+            }}
+          />
+          <span
+            style={{
+              color: 'var(--color-text-muted)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}
+          >
+            Autonomic Readiness
+          </span>
+        </div>
+        <span
+          style={{
+            background: `color-mix(in srgb, ${color} 15%, transparent)`,
+            color,
+            padding: '3px 10px',
+            borderRadius: 999,
+            fontSize: 'var(--text-xs)',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+          }}
+        >
+          {label}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+        <span
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-3xl)',
+            fontWeight: 700,
+            color,
+            lineHeight: 1,
+          }}
+        >
+          {score}
+        </span>
+        <span className="muted" style={{ fontSize: 'var(--text-sm)' }}>
+          / 100 Recovery Score
+        </span>
+      </div>
+
+      <p style={{ margin: 0, color: 'var(--color-text)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
+        {advice}
+      </p>
+    </div>
+  )
+}
+
+/** Form / TSB status pill badge. */
+export function FormStatusBadge({ status, tone }) {
+  if (!status) return null
+  const color =
+    tone === 'good'
+      ? 'var(--status-success)'
+      : tone === 'warn'
+        ? 'var(--status-warn)'
+        : tone === 'bad'
+          ? 'var(--status-error)'
+          : 'var(--color-accent)'
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '3px 8px',
+        borderRadius: 999,
+        background: `color-mix(in srgb, ${color} 15%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+        color,
+        fontSize: 'var(--text-xs)',
+        fontWeight: 600,
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
+      {status}
+    </span>
+  )
+}
+

@@ -108,7 +108,7 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
           <h3 style={{ fontSize: 'var(--text-lg)' }}>Baseline vs. now</h3>
           <StatGrid>
             {METRICS.map((metric) => {
-              const from = baseline[metric.key]
+              const from = baseline[metric.key] ?? chronological.find((m) => m[metric.key] != null)?.[metric.key]
               const to = latest[metric.key]
               if (from == null || to == null) return null
               const delta = trendDelta([from, to], { lowerIsBetter: metric.lowerIsBetter })

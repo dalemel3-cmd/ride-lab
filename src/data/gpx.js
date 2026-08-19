@@ -112,20 +112,27 @@ export function parseGpx(xmlText) {
       ? Math.round(((lastTime - firstTime) / 60000) * 10) / 10
       : null
 
-  const avgHr = heartRates.length
-    ? Math.round(heartRates.reduce((sum, n) => sum + n, 0) / heartRates.length)
+  const maxHr = heartRates.length
+    ? heartRates.reduce((max, hr) => (hr > max ? hr : max), 0)
     : null
+
+  // Downsample track for local storage if over 1000 points (keeps shape, prevents quota overflow)
+  let savedTrack = track
+  if (track.length > 1000) {
+    const step = Math.ceil(track.length / 1000)
+    savedTrack = track.filter((_, idx) => idx === 0 || idx === track.length - 1 || idx % step === 0)
+  }
 
   return {
     name,
     // Falls back to now so an export stripped of timestamps still imports.
     startedAt: firstTime !== null ? new Date(firstTime).toISOString() : null,
-    track,
+    track: savedTrack,
     distanceMi: Math.round(distance * 100) / 100,
     durationMin,
     elevationFt: elevations.length > 1 ? elevationGainFeet(elevations) : null,
     avgHr,
-    maxHr: heartRates.length ? Math.max(...heartRates) : null,
+    maxHr,
     pointCount: track.length,
     hasHeartRate: heartRates.length > 0,
   }

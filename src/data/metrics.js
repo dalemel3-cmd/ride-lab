@@ -359,3 +359,279 @@ export function summarize(rides = []) {
     avgSpeed: avgSpeed(totals.distanceMi, totals.durationMin),
   }
 }
+
+/**
+ * Banister Training Impulse (TRIMP) - Exponential cardiac stress model (Banister, 1991).
+ *
+ * TRIMP = durationMin × HR_ratio × 0.64 × e^(1.92 × HR_ratio) (male)
+ * HR_ratio = (avgHr - restingHr) / (maxHr - restingHr)
+ *
+ * Accounts for the exponential physiological cost of high-intensity efforts
+ * rather than linear duration-intensity products.
+ */
+export function trimp(avgHrValue, durationMin, maxHrValue, restingHrValue = 60, gender = 'male') {
+  const hr = toNumber(avgHrValue)
+  const t = toNumber(durationMin)
+  const max = toNumber(maxHrValue)
+  const rest = toNumber(restingHrValue) ?? 60
+
+  if (hr === null || t === null || max === null || max <= rest || hr <= rest || t <= 0) {
+    return null
+  }
+
+  const hrRatio = Math.max(0, Math.min(1, (hr - rest) / (max - rest)))
+  const yFactor = gender === 'female' ? 0.86 * Math.exp(1.67 * hrRatio) : 0.64 * Math.exp(1.92 * hrRatio)
+
+  return Math.round(t * hrRatio * yFactor * 10) / 10
+}
+
+/**
+ * Performance Management Chart (PMC) Engine.
+ *
+ * Computes daily Chronic Training Load (CTL / Fitness, 42-day decay),
+ * Acute Training Load (ATL / Fatigue, 7-day decay), and
+ * Training Stress Balance (TSB / Form = CTL - ATL).
+ */
+export function performanceManagementChart(rides = [], { ctlDays = 42, atlDays = 7, defaultMaxHr = 190 } = {}) {
+  if (!Array.isArray(rides) || rides.length === 0) return []
+
+  // Map total load per calendar date (using either TRIMP or Foster load)
+  const dailyLoads = new Map()
+
+  for (const ride of rides) {
+    const d = recordDate(ride)
+    // Prefer TRIMP if HR exists, otherwise fallback to Foster sRPE (scaled ~ / 3 to match TRIMP units)
+    let load = null
+    if (ride.avg_hr && ride.duration_min) {
+      load = trimp(ride.avg_hr, ride.duration_min, defaultMaxHr)
+    }
+    if (load === null && ride.rpe && ride.duration_min) {
+      load = Math.round((trainingLoad(ride.rpe, ride.duration_min) / 3) * 10) / 10
+    }
+    if (load !== null) {
+      dailyLoads.set(d, (dailyLoads.get(d) ?? 0) + load)
+    }
+  }
+
+  // Sort dates
+  const dates = [...dailyLoads.keys()].sort()
+  if (dates.length === 0) return []
+
+  const startDate = new Date(`${dates[0]}T12:00:00Z`)
+  const endDate = new Date()
+  const ctlDecay = 2 / (ctlDays + 1)
+  const atlDecay = 2 / (atlDays + 1)
+
+  let ctl = 0
+  let atl = 0
+  const series = []
+
+  const cur = new Date(startDate)
+  while (cur <= endDate) {
+    const dateStr = cur.toISOString().slice(0, 10)
+    const load = dailyLoads.get(dateStr) ?? 0
+
+    ctl = ctl * (1 - ctlDecay) + load * ctlDecay
+    atl = atl * (1 - atlDecay) + load * atlDecay
+    const tsb = ctl - atl
+
+    let status = 'Grey / Maintenance'
+    let tone = 'neutral'
+    if (tsb > 25) {
+      status = 'Very Fresh / Transition'
+      tone = 'warn'
+    } else if (tsb >= 5) {
+      status = 'Fresh / Race Ready'
+      tone = 'good'
+    } else if (tsb >= -10) {
+      status = 'Maintenance'
+      tone = 'neutral'
+    } else if (tsb >= -30) {
+      status = 'Optimal Progressive Overload'
+      tone = 'good'
+    } else {
+      status = 'High Fatigue / Overreaching Risk'
+      tone = 'bad'
+    }
+
+    series.push({
+      date: dateStr,
+      load: Math.round(load),
+      ctl: Math.round(ctl * 10) / 10,
+      atl: Math.round(atl * 10) / 10,
+      tsb: Math.round(tsb * 10) / 10,
+      status,
+      tone,
+    })
+
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+
+  return series
+}
+
+/**
+ * HRV 7-Day Rolling Baseline & Smallest Worthwhile Change (SWC) Bands.
+ *
+ * Implements Plews et al. (2013) sports science protocol:
+ * Uses natural log transformation ln(rMSSD) with a 7-day rolling mean ± 0.5 × SD.
+ */
+export function hrvAutonomicBands(bodyComp = []) {
+  const points = bodyComp
+    .filter((m) => m?.measured_at && m?.hrv_ms != null && Number(m.hrv_ms) > 0)
+    .map((m) => ({
+      date: m.measured_at.slice(0, 10),
+      hrv: Number(m.hrv_ms),
+      lnHrv: Math.log(Number(m.hrv_ms)),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  if (points.length === 0) return []
+
+  const results = []
+  for (let i = 0; i < points.length; i += 1) {
+    // 7-day window up to index i
+    const window = points.slice(Math.max(0, i - 6), i + 1)
+    const lnMean = window.reduce((sum, p) => sum + p.lnHrv, 0) / window.length
+    const variance = window.reduce((sum, p) => sum + (p.lnHrv - lnMean) ** 2, 0) / window.length
+    const sd = Math.sqrt(variance)
+    const swc = 0.5 * (sd || 0.1) // 0.5 × SD is standard SWC
+
+    const baselineHrv = Math.round(Math.exp(lnMean) * 10) / 10
+    const lowerBand = Math.round(Math.exp(lnMean - swc) * 10) / 10
+    const upperBand = Math.round(Math.exp(lnMean + swc) * 10) / 10
+
+    const current = points[i].hrv
+    let autonomicState = 'Balanced'
+    let tone = 'good'
+    if (current < lowerBand) {
+      autonomicState = 'Sympathetic Stress / Overreached'
+      tone = 'bad'
+    } else if (current > upperBand) {
+      autonomicState = 'Parasympathetic Dominance'
+      tone = 'warn'
+    }
+
+    results.push({
+      date: points[i].date,
+      hrv: current,
+      baselineHrv,
+      lowerBand,
+      upperBand,
+      autonomicState,
+      tone,
+    })
+  }
+
+  return results
+}
+
+/**
+ * Daily Readiness & Recovery Composite Index (0–100).
+ *
+ * Integrates HRV autonomic status, resting heart rate deviation, and recent fatigue.
+ */
+export function dailyReadiness({
+  hrv,
+  hrvBaseline,
+  restingHr,
+  restingHrBaseline,
+  recentTsb = 0,
+} = {}) {
+  let score = 75 // Neutral baseline
+
+  if (hrv != null && hrvBaseline != null && hrvBaseline > 0) {
+    const hrvRatio = hrv / hrvBaseline
+    if (hrvRatio >= 1.05) score += 12
+    else if (hrvRatio >= 0.95) score += 5
+    else if (hrvRatio >= 0.85) score -= 10
+    else score -= 25
+  }
+
+  if (restingHr != null && restingHrBaseline != null && restingHrBaseline > 0) {
+    const rhrDiff = restingHr - restingHrBaseline
+    if (rhrDiff <= -2) score += 10
+    else if (rhrDiff <= 1) score += 4
+    else if (rhrDiff <= 4) score -= 8
+    else score -= 20
+  }
+
+  if (recentTsb != null) {
+    if (recentTsb > 5) score += 8
+    else if (recentTsb >= -15) score += 2
+    else if (recentTsb >= -30) score -= 8
+    else score -= 18
+  }
+
+  const finalScore = Math.max(10, Math.min(100, Math.round(score)))
+
+  let zone = 'green'
+  let label = 'Optimal Readiness'
+  let advice = 'Cardiovascular system is fully recovered. Prime condition for threshold, VO2 max intervals, or heavy volume.'
+
+  if (finalScore < 50) {
+    zone = 'red'
+    label = 'High Fatigue / Overreached'
+    advice = 'Autonomic nervous system is under stress. Focus on active recovery in Zone 1, mobility, nutrition, and sleep.'
+  } else if (finalScore < 75) {
+    zone = 'amber'
+    label = 'Steady / Maintenance'
+    advice = 'Solid baseline state. Ideal for Zone 2 aerobic endurance or moderate tempo training.'
+  }
+
+  return {
+    score: finalScore,
+    zone,
+    label,
+    advice,
+  }
+}
+
+/**
+ * Metabolic Substrate Oxidation Estimator (FatMax Engine).
+ *
+ * Estimates grams of Fat vs. Carbohydrate burned per session based on fractional HR intensity.
+ */
+export function substrateOxidation(avgHrValue, durationMin, maxHrValue) {
+  const hr = toNumber(avgHrValue)
+  const t = toNumber(durationMin)
+  const max = toNumber(maxHrValue)
+
+  if (hr === null || t === null || max === null || hr <= 0 || t <= 0 || max <= 0) {
+    return null
+  }
+
+  const intensity = Math.min(1.0, hr / max)
+  // Approximate cycling caloric burn rate (~10-14 kcal/min based on intensity)
+  const kcalPerMin = 5 + intensity * 10
+  const totalKcal = Math.round(kcalPerMin * t)
+
+  // Substrate split curve based on FatMax crossover concept (Brooks & Mercier, 1994):
+  // Zone 1 (<60%): 80% Fat / 20% Carb
+  // Zone 2 (60-70% FatMax): 65% Fat / 35% Carb
+  // Zone 3 (70-80%): 40% Fat / 60% Carb
+  // Zone 4 (80-90%): 15% Fat / 85% Carb
+  // Zone 5 (>90%): 5% Fat / 95% Carb
+  let fatFraction = 0.5
+  if (intensity < 0.6) fatFraction = 0.8
+  else if (intensity < 0.7) fatFraction = 0.65
+  else if (intensity < 0.8) fatFraction = 0.4
+  else if (intensity < 0.9) fatFraction = 0.15
+  else fatFraction = 0.05
+
+  const fatKcal = totalKcal * fatFraction
+  const carbKcal = totalKcal * (1 - fatFraction)
+
+  // Fat = 9 kcal/g, Carb = 4 kcal/g
+  const fatGrams = Math.round(fatKcal / 9)
+  const carbGrams = Math.round(carbKcal / 4)
+
+  return {
+    totalKcal,
+    fatGrams,
+    carbGrams,
+    fatPercentage: Math.round(fatFraction * 100),
+    carbPercentage: Math.round((1 - fatFraction) * 100),
+  }
+}
+

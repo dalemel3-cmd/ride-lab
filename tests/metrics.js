@@ -26,6 +26,11 @@ import {
   efficiencyBySurface,
   routeProgress,
   summarize,
+  trimp,
+  performanceManagementChart,
+  hrvAutonomicBands,
+  dailyReadiness,
+  substrateOxidation,
 } from '../src/data/metrics.js'
 import {
   startOfWeek,
@@ -244,5 +249,45 @@ check('formatDuration over an hour', formatDuration(84), '1h 24m')
 check('formatStopwatch pads seconds', formatStopwatch(84000), '1:24')
 check('formatStopwatch adds hours', formatStopwatch(5047000), '1:24:07')
 
+console.log('\nBanister TRIMP (Training Impulse)')
+checkClose('60 min at 150 bpm, max 190, rest 60', trimp(150, 60, 190, 60), 100.4, 0.5)
+check('missing HR is null', trimp(null, 60, 190), null)
+check('zero duration is null', trimp(150, 0, 190), null)
+check('HR below resting is null', trimp(50, 60, 190, 60), null)
+
+console.log('\nPerformance Management Chart (PMC)')
+const pmcTestRides = [
+  { ridden_at: '2026-05-01T12:00:00Z', avg_hr: 150, duration_min: 60, rpe: 6 },
+  { ridden_at: '2026-05-02T12:00:00Z', avg_hr: 160, duration_min: 45, rpe: 7 },
+]
+const pmcResult = performanceManagementChart(pmcTestRides)
+check('generates daily timeseries', pmcResult.length > 0, true)
+check('first day has positive CTL and ATL', pmcResult[0].ctl > 0 && pmcResult[0].atl > 0, true)
+check('TSB equals CTL - ATL', Math.round((pmcResult[0].ctl - pmcResult[0].atl) * 10) / 10, pmcResult[0].tsb)
+
+console.log('\nHRV Autonomic Bands (SWC)')
+const hrvTestData = [
+  { measured_at: '2026-05-01', hrv_ms: 80 },
+  { measured_at: '2026-05-02', hrv_ms: 85 },
+  { measured_at: '2026-05-03', hrv_ms: 82 },
+]
+const hrvResult = hrvAutonomicBands(hrvTestData)
+check('produces band outputs for valid data', hrvResult.length, 3)
+check('upper band is greater than baseline', hrvResult[2].upperBand >= hrvResult[2].baselineHrv, true)
+check('lower band is less than baseline', hrvResult[2].lowerBand <= hrvResult[2].baselineHrv, true)
+
+console.log('\nDaily Readiness')
+const readyGreen = dailyReadiness({ hrv: 85, hrvBaseline: 80, restingHr: 50, restingHrBaseline: 52, recentTsb: 10 })
+check('green zone for optimal readiness', readyGreen.zone, 'green')
+const readyRed = dailyReadiness({ hrv: 55, hrvBaseline: 80, restingHr: 62, restingHrBaseline: 52, recentTsb: -35 })
+check('red zone for high fatigue/overreaching', readyRed.zone, 'red')
+
+console.log('\nMetabolic Substrate Utilization (FatMax)')
+const subZone2 = substrateOxidation(125, 60, 190) // ~65% max HR (Zone 2)
+check('calculates caloric and fat/carb breakdown', subZone2 !== null, true)
+check('Zone 2 burns predominantly fat (>50%)', subZone2.fatPercentage >= 60, true)
+check('missing HR yields null', substrateOxidation(null, 60, 190), null)
+
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)
+

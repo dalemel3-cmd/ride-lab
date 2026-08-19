@@ -27,7 +27,7 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
   const weeks = useMemo(() => {
     const grouped = new Map()
     for (const ride of rides) {
-      const week = startOfWeek(toDateString(new Date(ride.ridden_at)))
+      const week = startOfWeek(recordDate(ride))
       if (!grouped.has(week)) grouped.set(week, [])
       grouped.get(week).push(ride)
     }
@@ -46,7 +46,7 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
   }
 
   async function handleDelete(ride) {
-    if (!window.confirm(`Delete the ${formatShortDate(toDateString(new Date(ride.ridden_at)))} ride?`)) {
+    if (!window.confirm(`Delete the ${formatShortDate(recordDate(ride))} ride?`)) {
       return
     }
     await deleteRow(TABLES.rides, ride.id)
@@ -128,8 +128,8 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
             editing
               ? {
                   id: editing.id,
-                  date: toDateString(new Date(editing.ridden_at)),
-                  time: toTimeString(new Date(editing.ridden_at)),
+                  date: recordDate(editing),
+                  time: editing.ridden_at ? toTimeString(new Date(editing.ridden_at)) : toTimeString(),
                   route_name: editing.route_name ?? '',
                   distance_mi: editing.distance_mi ?? '',
                   duration_min: editing.duration_min ?? '',
