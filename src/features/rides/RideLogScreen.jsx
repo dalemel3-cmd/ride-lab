@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Plus, Satellite, Trash2, Pencil } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { Plus, Satellite, Trash2, Pencil, Upload } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { avgSpeed, trainingLoad, hrZone, summarize } from '../../data/metrics.js'
 import { formatDuration, formatShortDate, toDateString, toTimeString, startOfWeek, recordDate } from '../../data/dates.js'
@@ -7,6 +7,7 @@ import { StatGrid, StatTile, EmptyState } from '../../components/ui.jsx'
 import RideForm from './RideForm.jsx'
 import RecordRide from './RecordRide.jsx'
 import RouteMap from './RouteMap.jsx'
+import { parseGpx } from '../../data/gpx.js'
 
 /**
  * The ride log: every ride, newest first, grouped by training week.
@@ -19,6 +20,7 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
   const [mode, setMode] = useState('list') // list | form | record
   const [editing, setEditing] = useState(null)
   const [prefill, setPrefill] = useState(null)
+  const fileInputRef = useRef(null)
 
   const totals = useMemo(() => summarize(rides), [rides])
 
@@ -64,6 +66,42 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
       track,
     })
     setMode('form')
+  }
+
+  async function handleGpxFile(event) {
+    const file = event.target.files?.[0]
+    // Reset immediately so picking the same file twice still fires a change.
+    event.target.value = ''
+    if (!file) return
+
+    try {
+      const parsed = parseGpx(await file.text())
+      if (!parsed) {
+        showToast('No track points in that file', 'error')
+        return
+      }
+
+      const started = parsed.startedAt ? new Date(parsed.startedAt) : new Date()
+      setPrefill({
+        date: toDateString(started),
+        time: toTimeString(started),
+        route_name: parsed.name ?? '',
+        distance_mi: parsed.distanceMi,
+        duration_min: parsed.durationMin ?? '',
+        elevation_ft: parsed.elevationFt ?? '',
+        avg_hr: parsed.avgHr ?? '',
+        max_hr: parsed.maxHr ?? '',
+        track: parsed.track,
+      })
+      setMode('form')
+      showToast(
+        parsed.hasHeartRate
+          ? `Imported ${parsed.distanceMi} mi with heart rate`
+          : `Imported ${parsed.distanceMi} mi — add RPE and heart rate`,
+      )
+    } catch (error) {
+      showToast(String(error.message ?? error), 'error')
+    }
   }
 
   if (mode === 'record') {
@@ -121,6 +159,20 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
       <div className="screen-header">
         <h2>Rides</h2>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Import a GPX file"
+          >
+            <Upload size={18} aria-hidden="true" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".gpx,application/gpx+xml,application/xml,text/xml"
+            onChange={handleGpxFile}
+            style={{ display: 'none' }}
+          />
           <button className="btn" onClick={() => setMode('record')} aria-label="Record ride with GPS">
             <Satellite size={18} aria-hidden="true" />
           </button>
@@ -139,8 +191,9 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
 
       {rides.length === 0 && (
         <EmptyState>
-          No rides yet. Tap <strong>Log</strong> to enter one from your head unit, or the satellite
-          icon to record with GPS.
+          No rides yet. Tap <strong>Log</strong> to enter one from your head unit, the satellite
+          icon to record with GPS, or the upload icon to import a <strong>.gpx</strong> file
+          exported from Strava, Garmin, or your head unit.
         </EmptyState>
       )}
 

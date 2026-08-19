@@ -12,7 +12,8 @@
     "test": "node tests/metrics.js",
     "test:ui": "node tests/ui.js",
     "test:queue": "node tests/queue.js",
-    "check": "npm run lint && npm run build && npm test"
+    "check": "npm run lint && npm run build && npm test",
+    "test:gpx": "node tests/gpx.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",
