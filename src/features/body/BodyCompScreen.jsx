@@ -193,51 +193,57 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
 
       {bodyComp.length > 0 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <h3 style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>History</h3>
-          {bodyComp.map((entry) => (
-            <div
-              key={entry.id}
-              className="card"
-              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12 }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <strong>{formatShortDate(entry.measured_at)}</strong>
-                {entry.is_baseline && (
-                  <span
-                    style={{
-                      marginLeft: 8,
-                      padding: '2px 8px',
-                      borderRadius: 999,
-                      background: 'var(--color-accent)',
-                      color: 'var(--navy-950)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 700,
-                    }}
+          <details>
+            <summary style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', cursor: 'pointer', padding: '8px 0', userSelect: 'none' }}>
+              History ({bodyComp.length} {bodyComp.length === 1 ? 'entry' : 'entries'})
+            </summary>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+              {bodyComp.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="card"
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12 }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong>{formatShortDate(entry.measured_at)}</strong>
+                    {entry.is_baseline && (
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          background: 'var(--color-accent)',
+                          color: 'var(--navy-950)',
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        BASELINE
+                      </span>
+                    )}
+                    <div className="muted">
+                      {[
+                        entry.weight_lbs != null && `${entry.weight_lbs} lbs`,
+                        entry.body_fat_pct != null && `${entry.body_fat_pct}% bf`,
+                        entry.waist_in != null && `${entry.waist_in}" waist`,
+                        entry.resting_hr != null && `${entry.resting_hr} bpm rest`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || 'No values recorded'}
+                    </div>
+                  </div>
+                  <button
+                    className="btn"
+                    style={{ padding: 8 }}
+                    onClick={() => handleDelete(entry)}
+                    aria-label="Delete measurement"
                   >
-                    BASELINE
-                  </span>
-                )}
-                <div className="muted">
-                  {[
-                    entry.weight_lbs != null && `${entry.weight_lbs} lbs`,
-                    entry.body_fat_pct != null && `${entry.body_fat_pct}% bf`,
-                    entry.waist_in != null && `${entry.waist_in}" waist`,
-                    entry.resting_hr != null && `${entry.resting_hr} bpm rest`,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ') || 'No values recorded'}
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
                 </div>
-              </div>
-              <button
-                className="btn"
-                style={{ padding: 8 }}
-                onClick={() => handleDelete(entry)}
-                aria-label="Delete measurement"
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
+              ))}
             </div>
-          ))}
+          </details>
         </section>
       )}
     </div>
