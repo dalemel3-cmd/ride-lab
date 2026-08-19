@@ -31,9 +31,15 @@ export default function JournalScreen({ journal, rides, refresh, showToast, setP
   const byMonth = useMemo(() => {
     const groups = new Map()
     for (const entry of journal) {
-      // Parse YYYY-MM-DD as UTC to avoid local timezone shifts changing the month
-      const date = new Date(`${entry.entry_date}T00:00:00Z`)
-      const monthStr = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+      if (!entry.entry_date) continue
+      // Parse safely to avoid local timezone shifts changing the month
+      // Slice off any trailing time information if present before appending T12:00:00Z
+      const dateStr = entry.entry_date.slice(0, 10)
+      const date = new Date(`${dateStr}T12:00:00Z`)
+      const monthStr = isNaN(date.getTime()) 
+        ? 'Unknown Date'
+        : date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+        
       if (!groups.has(monthStr)) groups.set(monthStr, [])
       groups.get(monthStr).push(entry)
     }

@@ -97,7 +97,8 @@ export function recordDate(record, field = 'ridden_at') {
 
 /** Short human label, e.g. "May 1". */
 export function formatShortDate(dateStr) {
-  const d = new Date(`${dateStr}T12:00:00Z`)
+  if (!dateStr) return ''
+  const d = new Date(`${dateStr.slice(0, 10)}T12:00:00Z`)
   if (Number.isNaN(d.getTime())) return dateStr
   return new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',
