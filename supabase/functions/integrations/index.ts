@@ -270,7 +270,13 @@ async function googleListAll(token: string, path: string, filter: string, cap = 
 function findNumber(value: unknown, keys: string[]): number | null {
   if (value == null || typeof value !== 'object') return null
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (keys.includes(k) && typeof v === 'number' && Number.isFinite(v)) return v
+    if (keys.includes(k)) {
+      if (typeof v === 'number' && Number.isFinite(v)) return v
+      if (typeof v === 'string' && v.trim() !== '') {
+        const num = Number(v)
+        if (Number.isFinite(num)) return num
+      }
+    }
     const nested = findNumber(v, keys)
     if (nested !== null) return nested
   }
