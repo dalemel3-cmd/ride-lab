@@ -2,8 +2,10 @@
  * GPX parsing tests.
  *
  * Runs in a browser page because the parser uses DOMParser, which Node has no
- * built-in equivalent for. Needs the dev or preview server up:
- *   node tests/gpx.js
+ * built-in equivalent for. Needs the *dev* server specifically — it imports the
+ * module by source path, which the built preview does not serve:
+ *   npm run dev
+ *   APP_URL=http://127.0.0.1:5173 node tests/gpx.js
  *
  * The fixtures below use the exact shapes real exporters produce, including
  * the namespaced heart-rate extension that Strava and Garmin emit — the part

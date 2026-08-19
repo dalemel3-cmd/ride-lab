@@ -20,7 +20,10 @@ import { formatShortDate, recordDate } from '../../data/dates.js'
  * "connected" badge would be a lie.
  */
 
-const PROVIDERS = ['strava', 'fitbit']
+// Fitbit is intentionally absent: its API is switched off at the end of
+// September 2026, so offering it would invite someone to set up an integration
+// with weeks to live. Rows already connected still appear, via `status`.
+const PROVIDERS = ['google_health', 'strava']
 
 /** A copyable value for pasting into a provider's developer console. */
 function Field({ label, value }) {
@@ -157,7 +160,9 @@ export default function ConnectionsCard({ showToast, refresh }) {
       )}
 
       {!loading &&
-        PROVIDERS.map((provider) => {
+        // Anything already connected but no longer offered (Fitbit) still needs
+        // somewhere to be disconnected from.
+        [...new Set([...PROVIDERS, ...status.map((s) => s.provider)])].map((provider) => {
           const connection = connectedFor(provider)
           return (
             <div

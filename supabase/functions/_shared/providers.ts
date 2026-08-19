@@ -9,7 +9,7 @@
 
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 
-export type Provider = 'strava' | 'fitbit'
+export type Provider = 'strava' | 'fitbit' | 'google_health'
 
 export interface TokenSet {
   access_token: string
@@ -73,6 +73,19 @@ export const CONFIG = {
     clientId: () => requiredEnv('FITBIT_CLIENT_ID'),
     clientSecret: () => requiredEnv('FITBIT_CLIENT_SECRET'),
   },
+  google_health: {
+    authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    // Read-only, and only the two families this app actually uses: body
+    // measurements and sleep. Activity and location are deliberately absent —
+    // rides come from GPX, and an unused scope is one more thing to consent to.
+    scope: [
+      'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
+      'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
+    ].join(' '),
+    clientId: () => requiredEnv('GOOGLE_CLIENT_ID'),
+    clientSecret: () => requiredEnv('GOOGLE_CLIENT_SECRET'),
+  },
 } as const
 
 /** Provider consent URL for the start of the flow. */
@@ -87,6 +100,17 @@ export function authorizeUrl(provider: Provider, state: string): string {
   })
   // Strava re-prompts on every connect unless told otherwise.
   if (provider === 'strava') params.set('approval_prompt', 'auto')
+
+  if (provider === 'google_health') {
+    // Without access_type=offline Google issues no refresh token at all, and
+    // the connection silently dies the first time the access token expires.
+    params.set('access_type', 'offline')
+    // Google only returns a refresh token on the first consent; forcing the
+    // screen guarantees one even when the user has authorised before.
+    params.set('prompt', 'consent')
+    params.set('include_granted_scopes', 'true')
+  }
+
   return `${cfg.authorizeUrl}?${params.toString()}`
 }
 
@@ -115,6 +139,18 @@ export async function exchangeCode(provider: Provider, code: string): Promise<To
         client_secret: cfg.clientSecret(),
         code,
         grant_type: 'authorization_code',
+      }),
+    })
+  } else if (provider === 'google_health') {
+    response = await fetch(cfg.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: cfg.clientId(),
+        client_secret: cfg.clientSecret(),
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: callbackUrl(),
       }),
     })
   } else {
@@ -158,6 +194,17 @@ export async function refreshTokens(provider: Provider, refreshToken: string): P
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        client_id: cfg.clientId(),
+        client_secret: cfg.clientSecret(),
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    })
+  } else if (provider === 'google_health') {
+    response = await fetch(cfg.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
         client_id: cfg.clientId(),
         client_secret: cfg.clientSecret(),
         refresh_token: refreshToken,

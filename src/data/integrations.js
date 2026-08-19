@@ -109,12 +109,15 @@ export function readConnectResult() {
 
 export const PROVIDER_LABELS = {
   strava: 'Strava',
+  google_health: 'Google Health',
   fitbit: 'Fitbit',
 }
 
 export const PROVIDER_BLURBS = {
   strava:
-    'Imports rides automatically: distance, moving time, elevation, heart rate, and the GPS route. RPE stays yours to fill in — no app can infer how hard something felt.',
+    'Imports rides automatically: distance, moving time, elevation, heart rate, and the GPS route. Requires a paid Strava subscription since June 2026 — importing a .gpx file from the Rides screen does the same job for free.',
+  google_health:
+    'Imports resting heart rate, weight, body fat, and sleep from Fitbit, Pixel Watch, and anything feeding Google Health. Resting HR is the number that moves first when aerobic fitness improves.',
   fitbit:
-    'Imports resting heart rate, weight, body fat, and sleep. Resting HR is the number that moves first when aerobic fitness improves.',
+    'Retired. The Fitbit Web API is switched off at the end of September 2026 and its tokens do not carry over — use Google Health instead.',
 }
