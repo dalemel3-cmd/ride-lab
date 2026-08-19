@@ -134,12 +134,12 @@ async function main() {
   console.log('\nApp shell')
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
   await page.waitForSelector('.bottom-nav', { timeout: 15000 })
-  check('bottom nav has five destinations', await page.locator('.nav-item').count(), 5)
+  check('bottom nav has six destinations', await page.locator('.nav-item').count(), 6)
   // Headings are uppercased by CSS, so compare case-insensitively.
   check(
-    'lands on the ride log',
+    'lands on the athlete cockpit',
     (await page.locator('h2').first().innerText()).toLowerCase(),
-    'rides',
+    'athlete cockpit',
   )
 
   // The route library should self-seed on an empty account.

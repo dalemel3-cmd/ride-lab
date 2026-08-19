@@ -218,10 +218,10 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
           <button
             className="btn btn-primary"
             onClick={handleExportCaseStudy}
-            style={{ padding: '8px 12px', minHeight: 36, fontSize: 'var(--text-xs)' }}
+            style={{ padding: '8px 14px' }}
             title="Download formatted Case Study Markdown Report"
           >
-            <Download size={15} aria-hidden="true" /> Export Study
+            <Download size={16} aria-hidden="true" /> Export Study
           </button>
           <span className="muted" style={{ fontSize: 'var(--text-xs)', fontWeight: 600 }}>
             W{currentWeek}/{settings.caseStudyWeeks}
