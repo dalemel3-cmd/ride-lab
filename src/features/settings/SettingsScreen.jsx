@@ -34,8 +34,18 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
 
   useEffect(refreshQueueView, [])
 
+  const [localSettings, setLocalSettings] = useState(settings)
+
+  useEffect(() => {
+    setLocalSettings(settings)
+  }, [settings])
+
   const set = (key) => (event) => {
-    const raw = event.target.value
+    setLocalSettings((prev) => ({ ...prev, [key]: event.target.value }))
+  }
+
+  const commit = (key) => () => {
+    const raw = localSettings[key]
     const value = key in NUMERIC_BOUNDS ? Number(raw) : raw
     onUpdateSettings({ ...settings, [key]: value })
   }
@@ -79,15 +89,15 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
         <div className="field-grid">
           <div className="full">
             <label htmlFor="riderName">Name</label>
-            <input id="riderName" value={settings.riderName} onChange={set('riderName')} />
+            <input id="riderName" value={localSettings.riderName} onChange={set('riderName')} onBlur={commit('riderName')} />
           </div>
           <div className="full">
             <label htmlFor="bikeName">Bike</label>
-            <input id="bikeName" value={settings.bikeName} onChange={set('bikeName')} />
+            <input id="bikeName" value={localSettings.bikeName} onChange={set('bikeName')} onBlur={commit('bikeName')} />
           </div>
           <div className="full">
             <label htmlFor="homeBase">Home base</label>
-            <input id="homeBase" value={settings.homeBase} onChange={set('homeBase')} />
+            <input id="homeBase" value={localSettings.homeBase} onChange={set('homeBase')} onBlur={commit('homeBase')} />
           </div>
         </div>
       </section>
@@ -103,8 +113,9 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
               inputMode="numeric"
               min={NUMERIC_BOUNDS.age.min}
               max={NUMERIC_BOUNDS.age.max}
-              value={settings.age}
+              value={localSettings.age}
               onChange={set('age')}
+              onBlur={commit('age')}
             />
           </div>
           <div>
@@ -115,8 +126,9 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
               inputMode="numeric"
               min={NUMERIC_BOUNDS.maxHr.min}
               max={NUMERIC_BOUNDS.maxHr.max}
-              value={settings.maxHr}
+              value={localSettings.maxHr}
               onChange={set('maxHr')}
+              onBlur={commit('maxHr')}
             />
           </div>
           <div className="full">
@@ -127,8 +139,9 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
               inputMode="numeric"
               min={NUMERIC_BOUNDS.restingHrTarget.min}
               max={NUMERIC_BOUNDS.restingHrTarget.max}
-              value={settings.restingHrTarget}
+              value={localSettings.restingHrTarget}
               onChange={set('restingHrTarget')}
+              onBlur={commit('restingHrTarget')}
             />
           </div>
         </div>
@@ -165,8 +178,9 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
             <input
               id="caseStudyStartDate"
               type="date"
-              value={settings.caseStudyStartDate}
+              value={localSettings.caseStudyStartDate}
               onChange={set('caseStudyStartDate')}
+              onBlur={commit('caseStudyStartDate')}
             />
           </div>
           <div>
@@ -177,13 +191,14 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
               inputMode="numeric"
               min={NUMERIC_BOUNDS.caseStudyWeeks.min}
               max={NUMERIC_BOUNDS.caseStudyWeeks.max}
-              value={settings.caseStudyWeeks}
+              value={localSettings.caseStudyWeeks}
               onChange={set('caseStudyWeeks')}
+              onBlur={commit('caseStudyWeeks')}
             />
           </div>
           <div className="full">
             <label htmlFor="defaultSurface">Default surface</label>
-            <select id="defaultSurface" value={settings.defaultSurface} onChange={set('defaultSurface')}>
+            <select id="defaultSurface" value={localSettings.defaultSurface} onChange={set('defaultSurface')} onBlur={commit('defaultSurface')}>
               {SURFACES.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
