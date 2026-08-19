@@ -212,6 +212,7 @@ const GOOGLE_TYPES = {
   bodyFat: { path: 'body-fat', field: 'body_fat', timeField: 'sample_time.physical_time' },
   sleep: { path: 'sleep', field: 'sleep', timeField: 'interval.civil_end_time' },
   restingHeartRate: { path: 'daily-resting-heart-rate', field: 'daily_resting_heart_rate', timeField: 'date' },
+  hrv: { path: 'daily-heart-rate-variability', field: 'daily_heart_rate_variability', timeField: 'date' },
 } as const
 
 const KG_TO_LBS = 2.20462
@@ -375,6 +376,9 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
         } else if (key === 'restingHeartRate') {
           const bpm = findNumber(point, ['beatsPerMinute', 'beats_per_minute', 'bpm'])
           if (bpm !== null) row.resting_hr = Math.round(bpm)
+        } else if (key === 'hrv') {
+          const ms = findNumber(point, ['averageHeartRateVariabilityMilliseconds', 'average_heart_rate_variability_milliseconds'])
+          if (ms !== null) row.hrv_ms = Math.round(ms)
         }
       }
     } catch (error) {
@@ -391,6 +395,7 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
       weight_lbs: v.weight_lbs ?? null,
       body_fat_pct: v.body_fat_pct ?? null,
       resting_hr: v.resting_hr ?? null,
+      hrv_ms: v.hrv_ms ?? null,
       // Never automatic: which day starts the study is a decision.
       is_baseline: false,
     }))
