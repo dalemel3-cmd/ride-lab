@@ -17,6 +17,9 @@ import {
   hrZoneRanges,
   acwr,
   weeklyMonotony,
+  polarizedAudit,
+  timeInZones,
+  combineZoneTimes,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
@@ -27,6 +30,7 @@ import {
   recordDate,
 } from '../../data/dates.js'
 import { StatGrid, FormStatusBadge } from '../../components/ui.jsx'
+import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 
 export default function DashboardScreen({
   rides,
@@ -110,6 +114,16 @@ export default function DashboardScreen({
   const currentMonotony = useMemo(
     () => weeklyMonotony(rides, { defaultMaxHr: settings.maxHr }),
     [rides, settings.maxHr],
+  )
+
+  // 8. Polarized 80/20 Distribution (Recent rides with HR track)
+  const recentZones = useMemo(
+    () => combineZoneTimes(rides.slice(-10).map((r) => timeInZones(r.track, settings.maxHr))),
+    [rides, settings.maxHr],
+  )
+  const polarizedRecentAudit = useMemo(
+    () => (recentZones ? polarizedAudit(recentZones) : null),
+    [recentZones],
   )
 
   // Study Progress
@@ -447,9 +461,9 @@ export default function DashboardScreen({
         </div>
       </StatGrid>
 
-      {/* SECTION: Workload & Periodization Radar (ACWR + Monotony) */}
-      {(currentAcwr || currentMonotony) && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* SECTION: Workload & Periodization Radar (ACWR + Monotony + Polarized Audit) */}
+      {(currentAcwr || currentMonotony || polarizedRecentAudit) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Gauge size={16} color="var(--color-accent)" />
             <span
@@ -586,6 +600,15 @@ export default function DashboardScreen({
               </span>
             </div>
           </StatGrid>
+
+          {/* Polarized Training 80/20 Distribution Gauge */}
+          {polarizedRecentAudit && (
+            <PolarizedGauge
+              audit={polarizedRecentAudit}
+              title="Polarized 80/20 Intensity Audit"
+              subtitle="Recent Rides with Continuous Heart Rate"
+            />
+          )}
         </div>
       )}
 

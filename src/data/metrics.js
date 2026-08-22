@@ -946,4 +946,81 @@ export function weeklyMonotony(rides = [], { days = 7, defaultMaxHr = 190, endDa
   return fosterMonotonyAndStrain(dailyLoads)
 }
 
+/**
+ * Polarized Training 80/20 Distribution Audit (Dr. Stephen Seiler 3-Domain Model).
+ *
+ * Domain 1 (Low / Aerobic Base): 5-Zone Z1 + Z2 (<75% max HR)
+ * Domain 2 (Moderate / Threshold / Grey Zone): 5-Zone Z3 (75-85% max HR)
+ * Domain 3 (High / Severe / VO2 max): 5-Zone Z4 + Z5 (>85% max HR)
+ *
+ * Archetype Classifications:
+ * - Polarized: Low >= 75% AND High >= Mod (Seiler gold standard)
+ * - Pyramidal: Low >= 65% AND Mod >= High (Classic base building)
+ * - Threshold-Heavy: Mod >= 20% or Low < 65% (Grey Zone risk / excessive tempo fatigue)
+ */
+export function polarizedAudit(zoneDistributions) {
+  if (!Array.isArray(zoneDistributions) || zoneDistributions.length === 0) return null
+
+  // Sum seconds across zones
+  const totalSeconds = zoneDistributions.reduce((sum, z) => sum + (Number(z?.seconds) || 0), 0)
+  if (totalSeconds < 60) return null // Need at least 1 minute of tracked HR
+
+  const lowSeconds = zoneDistributions
+    .filter((z) => z.zone === 1 || z.zone === 2)
+    .reduce((sum, z) => sum + (Number(z?.seconds) || 0), 0)
+
+  const modSeconds = zoneDistributions
+    .filter((z) => z.zone === 3)
+    .reduce((sum, z) => sum + (Number(z?.seconds) || 0), 0)
+
+  const highSeconds = zoneDistributions
+    .filter((z) => z.zone === 4 || z.zone === 5)
+    .reduce((sum, z) => sum + (Number(z?.seconds) || 0), 0)
+
+  const lowPct = Math.round((lowSeconds / totalSeconds) * 100)
+  const modPct = Math.round((modSeconds / totalSeconds) * 100)
+  const highPct = Math.round((highSeconds / totalSeconds) * 100)
+
+  let archetype = 'Polarized'
+  let label = 'Polarized (Seiler 80/20)'
+  let tone = 'good'
+  let description = 'Optimal polarized distribution. High aerobic volume with targeted high-intensity contrast and minimal grey-zone fatigue.'
+
+  if (lowPct >= 75 && highPct >= modPct) {
+    archetype = 'Polarized'
+    label = 'Polarized (Seiler 80/20)'
+    tone = 'good'
+    description = 'Optimal polarized distribution. High aerobic volume with targeted high-intensity contrast and minimal grey-zone fatigue.'
+  } else if (lowPct >= 65 && modPct >= highPct) {
+    archetype = 'Pyramidal'
+    label = 'Pyramidal Distribution'
+    tone = 'good'
+    description = 'Solid aerobic dominance with progressive moderate tempo volume.'
+  } else if (modPct >= 20 || lowPct < 65) {
+    archetype = 'Threshold-Heavy'
+    label = 'Grey Zone Risk (Threshold Heavy)'
+    tone = 'warn'
+    description = 'Excessive time in Zone 3 ("the black hole"). High physiological fatigue with diminished mitochondrial adaptation.'
+  } else {
+    archetype = 'Mixed'
+    label = 'Mixed Distribution'
+    tone = 'neutral'
+    description = 'Training distribution is varied across intensity domains.'
+  }
+
+  return {
+    lowSeconds,
+    modSeconds,
+    highSeconds,
+    totalSeconds,
+    lowPct,
+    modPct,
+    highPct,
+    archetype,
+    label,
+    tone,
+    description,
+  }
+}
+
 

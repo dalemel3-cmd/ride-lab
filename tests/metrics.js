@@ -36,6 +36,7 @@ import {
   acwr,
   fosterMonotonyAndStrain,
   weeklyMonotony,
+  polarizedAudit,
 } from '../src/data/metrics.js'
 import {
   startOfWeek,
@@ -389,6 +390,44 @@ const mockRideList = [
 ]
 const weekMonotonyResult = weeklyMonotony(mockRideList, { endDate: '2026-08-22' })
 check('weeklyMonotony helper produces valid output', weekMonotonyResult !== null, true)
+
+console.log('\nPolarized Training 80/20 Distribution Audit')
+const polarizedMock = [
+  { zone: 1, seconds: 1200 },
+  { zone: 2, seconds: 3600 },
+  { zone: 3, seconds: 300 },
+  { zone: 4, seconds: 600 },
+  { zone: 5, seconds: 300 },
+]
+const polResult = polarizedAudit(polarizedMock)
+check('computes Low percentage (80%)', polResult.lowPct, 80)
+check('computes Mod percentage (5%)', polResult.modPct, 5)
+check('computes High percentage (15%)', polResult.highPct, 15)
+check('identifies Polarized archetype', polResult.archetype, 'Polarized')
+
+const pyramidalMock = [
+  { zone: 1, seconds: 1200 },
+  { zone: 2, seconds: 3000 },
+  { zone: 3, seconds: 1200 },
+  { zone: 4, seconds: 400 },
+  { zone: 5, seconds: 200 },
+]
+const pyrResult = polarizedAudit(pyramidalMock)
+check('identifies Pyramidal archetype', pyrResult.archetype, 'Pyramidal')
+
+const thresholdMock = [
+  { zone: 1, seconds: 600 },
+  { zone: 2, seconds: 2400 },
+  { zone: 3, seconds: 2400 },
+  { zone: 4, seconds: 600 },
+]
+const threshResult = polarizedAudit(thresholdMock)
+check('identifies Threshold-Heavy / Grey Zone', threshResult.archetype, 'Threshold-Heavy')
+check('triggers warn tone on Grey Zone', threshResult.tone, 'warn')
+
+check('less than 60 seconds of HR is null', polarizedAudit([{ zone: 1, seconds: 30 }]), null)
+check('empty zone array is null', polarizedAudit([]), null)
+check('null input is null', polarizedAudit(null), null)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

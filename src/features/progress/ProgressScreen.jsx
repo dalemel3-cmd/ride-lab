@@ -30,6 +30,7 @@ import {
   combineZoneTimes,
   acwr,
   weeklyMonotony,
+  polarizedAudit,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
@@ -41,6 +42,7 @@ import {
 } from '../../data/dates.js'
 import { StatGrid, StatTile, ScienceNote, EmptyState, ReadinessDial, FormStatusBadge } from '../../components/ui.jsx'
 import ZoneBar from '../../components/ZoneBar.jsx'
+import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 import StudyReadiness from '../../components/StudyReadiness.jsx'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
@@ -126,6 +128,11 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
   const studyZones = useMemo(
     () => combineZoneTimes(rides.map((r) => timeInZones(r.track, settings.maxHr))),
     [rides, settings.maxHr],
+  )
+
+  const polarizedStudyAudit = useMemo(
+    () => (studyZones ? polarizedAudit(studyZones) : null),
+    [studyZones],
   )
 
   const pct = (zoneNumbers) =>
@@ -253,20 +260,25 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
       `- **Total Elevation Climbed:** ${totals.elevationFt.toLocaleString()} ft`,
       `- **Estimated Energy Burned:** ${substrateTotals.totalKcal.toLocaleString()} kcal (${substrateTotals.fatGrams}g Fat [~${substrateTotals.fatPounds} lbs] / ${substrateTotals.carbGrams}g Carbs)`,
       ``,
-      `## 2. Aerobic Decoupling & Efficiency (${surfaceLabel || 'Primary Surface'})`,
+      `## 2. Training Intensity Distribution (Seiler 3-Domain Model)`,
+      polarizedStudyAudit
+        ? `- **Distribution:** ${polarizedStudyAudit.lowPct}% Low (Z1+Z2) / ${polarizedStudyAudit.modPct}% Mod (Z3) / ${polarizedStudyAudit.highPct}% High (Z4+Z5)\n- **Archetype:** ${polarizedStudyAudit.label} (${polarizedStudyAudit.archetype})\n- **Guidance:** ${polarizedStudyAudit.description}`
+        : `- No continuous HR track distribution available.`,
+      ``,
+      `## 3. Aerobic Decoupling & Efficiency (${surfaceLabel || 'Primary Surface'})`,
       efficiencyTrend
         ? `- **Initial Efficiency:** ${efficiencyTrend.first} beats/mile\n- **Current Efficiency:** ${efficiencyTrend.last} beats/mile\n- **Net Adaptation:** ${efficiencyTrend.change} beats/mile (${efficiencyTrend.pctChange}% change)`
         : `- Insufficient single-surface rides recorded yet.`,
       ``,
-      `## 3. Banister Performance Management & Autonomic State`,
+      `## 4. Banister Performance Management & Workload Safety`,
       latestPmc
-        ? `- **Fitness (CTL - 42d):** ${latestPmc.ctl}\n- **Fatigue (ATL - 7d):** ${latestPmc.atl}\n- **Form (TSB):** ${latestPmc.tsb} (${latestPmc.status})`
+        ? `- **Fitness (CTL - 42d):** ${latestPmc.ctl}\n- **Fatigue (ATL - 7d):** ${latestPmc.atl}\n- **Form (TSB):** ${latestPmc.tsb} (${latestPmc.status})\n- **ACWR (Gabbett Ratio):** ${latestAcwr?.ratio ?? '—'} (${latestAcwr?.label ?? 'Awaiting data'})\n- **Foster Monotony (7d):** ${monotonyStats?.monotony ?? '—'} (Strain: ${monotonyStats?.strain ?? '—'})`
         : `- No load history available.`,
       latestBody
         ? `- **Current Resting HR:** ${latestBody.resting_hr ?? '—'} bpm\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms ?? '—'} ms\n- **Autonomic Status:** ${latestHrvBand?.autonomicState ?? 'Not measured'}`
         : ``,
       ``,
-      `## 4. Repeated Route Progress (Identical Course Control)`,
+      `## 5. Repeated Route Progress (Identical Course Control)`,
       ...routeGains.map(
         (r) =>
           `### ${r.route} (${r.rides}x)\n- Dates: ${r.firstDate} → ${r.latestDate}\n- Speed: ${r.speed?.first ?? '—'} → ${r.speed?.latest ?? '—'} mph\n- Cardiac Cost: ${r.beatsPerMile?.first ?? '—'} → ${r.beatsPerMile?.latest ?? '—'} beats/mi`,
@@ -325,24 +337,28 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
           ride carries per-point heart rate — there is nothing to distribute
           otherwise, and five empty bars would imply a measurement. */}
       {studyZones && (
-        <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <h3 style={{ fontSize: 'var(--text-base)', margin: 0 }}>Where the hours went</h3>
-          <ZoneBar distribution={studyZones} height={14} />
-          <ScienceNote title="The 80/20 question">
-            Endurance research keeps landing on the same distribution: roughly{' '}
-            <strong>80% of training time easy</strong> (Zones 1–2) and 20% genuinely hard (Zones
-            4–5), with little in between. The trap is that riders consistently believe they train
-            easier than they do — the easy days creep up into Zone 3, which is tiring enough to
-            cost recovery but not hard enough to drive adaptation.
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {polarizedStudyAudit && (
+            <PolarizedGauge
+              audit={polarizedStudyAudit}
+              title="16-Week Polarized Training Audit"
+              subtitle="Dr. Stephen Seiler 3-Domain Intensity Distribution"
+            />
+          )}
+
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <h4 style={{ fontSize: 'var(--text-sm)', margin: 0 }}>5-Zone Granular Breakdown</h4>
+            <ZoneBar distribution={studyZones} height={14} />
+          </div>
+
+          <ScienceNote title="Dr. Stephen Seiler's 80/20 Polarized Model">
+            Endurance physiology research across elite cyclists and runners demonstrates that roughly{' '}
+            <strong>80% of training time should remain low intensity</strong> (Zones 1–2 / below LT₁) and{' '}
+            <strong>20% high intensity</strong> (Zones 4–5 / above LT₂), with minimal time spent in Zone 3.
             <br />
             <br />
-            Yours is <strong>{easyPercent}% easy</strong>, {moderatePercent}% moderate, and{' '}
-            {hardPercent}% hard.{' '}
-            {moderatePercent > 35
-              ? 'That is a lot of Zone 3 — the classic pattern of riding the easy days too hard and the hard days too easy.'
-              : easyPercent >= 75
-                ? 'That is a well-polarized distribution: the easy days are genuinely easy, which is what makes the hard days possible.'
-                : 'Building more Zone 1–2 volume would move this toward the polarized pattern most endurance research supports.'}
+            <strong>The Grey Zone Trap:</strong> Riders often ride easy days too hard (drifting into Zone 3 tempo) and hard days too exhausted to reach Zone 5. 
+            Staying disciplined in Zone 1–2 builds mitochondrial density and capillary beds while preserving the autonomic capacity required to execute true high-intensity intervals.
           </ScienceNote>
         </section>
       )}
