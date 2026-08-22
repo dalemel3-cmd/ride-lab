@@ -313,7 +313,6 @@ export function ReadinessDial({ readiness }) {
   )
 }
 
-/** Form / TSB status pill badge. */
 export function FormStatusBadge({ status, tone }) {
   if (!status) return null
   const color =
@@ -330,17 +329,19 @@ export function FormStatusBadge({ status, tone }) {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 6,
-        padding: '3px 8px',
+        gap: 4,
+        padding: '2px 7px',
         borderRadius: 999,
         background: `color-mix(in srgb, ${color} 15%, transparent)`,
         border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
         color,
-        fontSize: 'var(--text-xs)',
-        fontWeight: 600,
+        fontSize: '10px',
+        fontWeight: 700,
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
       }}
     >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
+      <span style={{ width: 5, height: 5, borderRadius: '50%', background: color, flexShrink: 0 }} />
       {status}
     </span>
   )

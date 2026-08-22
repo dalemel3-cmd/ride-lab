@@ -6,7 +6,6 @@ import {
   TrendingUp,
   Plus,
   Bike,
-  Gauge,
   Navigation,
 } from 'lucide-react'
 import {
@@ -219,11 +218,12 @@ export default function DashboardScreen({
           borderLeft: `4px solid ${readinessColor}`,
           position: 'relative',
           background: 'linear-gradient(135deg, rgba(18, 38, 60, 0.9) 0%, rgba(6, 15, 26, 0.85) 100%)',
+          minWidth: 0,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Activity size={18} color={readinessColor} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <Activity size={18} color={readinessColor} style={{ flexShrink: 0 }} />
             <span
               style={{
                 color: 'var(--color-text-muted)',
@@ -231,6 +231,7 @@ export default function DashboardScreen({
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',
+                whiteSpace: 'nowrap',
               }}
             >
               Daily Training Status
@@ -245,6 +246,8 @@ export default function DashboardScreen({
               fontSize: 'var(--text-xs)',
               fontWeight: 700,
               border: `1px solid color-mix(in srgb, ${readinessColor} 30%, transparent)`,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}
           >
             {readiness ? readiness.label : 'Not enough data'}
@@ -253,7 +256,7 @@ export default function DashboardScreen({
 
         {readiness ? (
           <>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
               <span
                 style={{
                   fontFamily: 'var(--font-display)',
@@ -284,12 +287,13 @@ export default function DashboardScreen({
                 background: 'rgba(6, 15, 26, 0.65)',
                 border: '1px solid var(--color-border)',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: 10,
+                minWidth: 0,
               }}
             >
-              <Zap size={18} color="var(--color-accent)" style={{ flexShrink: 0 }} />
-              <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+              <Zap size={18} color="var(--color-accent)" style={{ flexShrink: 0, marginTop: 1 }} />
+              <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4, flex: 1, minWidth: 0, wordBreak: 'break-word' }}>
                 <strong style={{ color: 'var(--color-text)' }}>Today's Target: </strong>
                 {readiness.zone === 'green' && (
                   <span>
@@ -323,12 +327,13 @@ export default function DashboardScreen({
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 8,
+                  minWidth: 0,
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Navigation size={14} color="var(--color-accent)" />
-                    <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                    <Navigation size={14} color="var(--color-accent)" style={{ flexShrink: 0 }} />
+                    <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)', wordBreak: 'break-word' }}>
                       {suggestedRoute.name}
                     </strong>
                   </div>
@@ -338,13 +343,15 @@ export default function DashboardScreen({
                       fontWeight: 700,
                       textTransform: 'uppercase',
                       color: 'var(--color-accent)',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
                     }}
                   >
                     {suggestedRoute.difficulty}
                   </span>
                 </div>
 
-                <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                <div className="muted" style={{ fontSize: 'var(--text-xs)', wordBreak: 'break-word' }}>
                   {[
                     suggestedRoute.area,
                     suggestedRoute.distance_mi != null && `${suggestedRoute.distance_mi} mi`,
@@ -365,12 +372,15 @@ export default function DashboardScreen({
                     rel="noopener noreferrer"
                     className="btn btn-primary"
                     style={{
-                      padding: '6px 12px',
+                      padding: '8px 14px',
                       fontSize: 'var(--text-xs)',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 6,
                       textDecoration: 'none',
+                      flex: '1 1 auto',
+                      justifyContent: 'center',
+                      minWidth: 150,
                     }}
                   >
                     <Navigation size={14} aria-hidden="true" />
@@ -382,11 +392,14 @@ export default function DashboardScreen({
                     className="btn"
                     onClick={() => onNavigate('routes')}
                     style={{
-                      padding: '6px 12px',
+                      padding: '8px 14px',
                       fontSize: 'var(--text-xs)',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 6,
+                      flex: '1 1 auto',
+                      justifyContent: 'center',
+                      minWidth: 130,
                     }}
                   >
                     View Cues & Library
@@ -409,15 +422,21 @@ export default function DashboardScreen({
         {/* TILE 1: Training Stress Balance (TSB / Form) */}
         <div
           className="card"
-          style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}
+          style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflow: 'hidden' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flex: 1,
+                minWidth: 0,
               }}
             >
               Form (TSB)
@@ -430,6 +449,7 @@ export default function DashboardScreen({
             style={{
               fontFamily: 'var(--font-display)',
               fontSize: 'var(--text-2xl)',
+              lineHeight: 1.1,
               color:
                 latestPmc?.tone === 'good'
                   ? 'var(--status-success)'
@@ -442,9 +462,9 @@ export default function DashboardScreen({
           >
             {latestPmc ? (latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb) : '—'}
           </span>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {latestPmc
-              ? `Fitness ${latestPmc.ctl} · Fatigue ${latestPmc.atl}`
+              ? `Fit ${latestPmc.ctl} · Fat ${latestPmc.atl}`
               : 'Log a ride to build'}
           </span>
         </div>
@@ -452,26 +472,33 @@ export default function DashboardScreen({
         {/* TILE 2: Autonomic Balance (Resting HR & HRV) */}
         <div
           className="card"
-          style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}
+          style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflow: 'hidden' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flex: 1,
+                minWidth: 0,
               }}
             >
-              Resting HR & HRV
+              Resting HR
             </span>
-            <Heart size={14} color="var(--color-accent)" />
+            <Heart size={14} color="var(--color-accent)" style={{ flexShrink: 0 }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span
               style={{
                 fontFamily: 'var(--font-display)',
                 fontSize: 'var(--text-2xl)',
+                lineHeight: 1.1,
                 color: 'var(--color-text)',
               }}
             >
@@ -481,35 +508,41 @@ export default function DashboardScreen({
               bpm
             </span>
           </div>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-            HRV: {latestBody?.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'} (
-            {latestHrvBand?.autonomicState ?? 'Normal'})
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            HRV: {latestBody?.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'}
           </span>
         </div>
 
         {/* TILE 3: Aerobic Efficiency (Cardiac Cost per Mile) */}
         <div
           className="card"
-          style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}
+          style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflow: 'hidden' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flex: 1,
+                minWidth: 0,
               }}
             >
               Cardiac Cost
             </span>
-            <TrendingUp size={14} color="var(--status-success)" />
+            <TrendingUp size={14} color="var(--status-success)" style={{ flexShrink: 0 }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span
               style={{
                 fontFamily: 'var(--font-display)',
                 fontSize: 'var(--text-2xl)',
+                lineHeight: 1.1,
                 color: 'var(--color-text)',
               }}
             >
@@ -522,6 +555,9 @@ export default function DashboardScreen({
           <span
             style={{
               fontSize: 'var(--text-xs)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
               color: efficiencyTrend?.improved
                 ? 'var(--status-success)'
                 : 'var(--color-text-muted)',
@@ -536,26 +572,33 @@ export default function DashboardScreen({
         {/* TILE 4: Weekly Volume & Training Load */}
         <div
           className="card"
-          style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}
+          style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflow: 'hidden' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flex: 1,
+                minWidth: 0,
               }}
             >
               Week Volume
             </span>
-            <Bike size={14} color="var(--zone-4)" />
+            <Bike size={14} color="var(--zone-4)" style={{ flexShrink: 0 }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span
               style={{
                 fontFamily: 'var(--font-display)',
                 fontSize: 'var(--text-2xl)',
+                lineHeight: 1.1,
                 color: 'var(--color-text)',
               }}
             >
@@ -565,7 +608,7 @@ export default function DashboardScreen({
               mi
             </span>
           </div>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {formatDuration(currentWeekRollup.durationMin)} · Load {currentWeekRollup.load}
           </span>
         </div>
@@ -574,10 +617,12 @@ export default function DashboardScreen({
         <div
           className="card"
           style={{
-            padding: 14,
+            padding: 12,
             display: 'flex',
             flexDirection: 'column',
             gap: 6,
+            minWidth: 0,
+            overflow: 'hidden',
             borderLeft: `3px solid ${
               currentAcwr?.tone === 'good'
                 ? 'var(--status-success)'
@@ -589,16 +634,22 @@ export default function DashboardScreen({
             }`,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flex: 1,
+                minWidth: 0,
               }}
             >
-              ACWR (Gabbett)
+              ACWR
             </span>
             {currentAcwr && (
               <FormStatusBadge status={currentAcwr.label} tone={currentAcwr.tone} />
@@ -609,6 +660,7 @@ export default function DashboardScreen({
               style={{
                 fontFamily: 'var(--font-display)',
                 fontSize: 'var(--text-2xl)',
+                lineHeight: 1.1,
                 color:
                   currentAcwr?.tone === 'good'
                     ? 'var(--status-success)'
@@ -625,8 +677,8 @@ export default function DashboardScreen({
               ATL / CTL
             </span>
           </div>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
-            {currentAcwr ? currentAcwr.description : 'Awaiting load history'}
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {currentAcwr ? currentAcwr.description : 'Load history'}
           </span>
         </div>
 
@@ -634,10 +686,12 @@ export default function DashboardScreen({
         <div
           className="card"
           style={{
-            padding: 14,
+            padding: 12,
             display: 'flex',
             flexDirection: 'column',
             gap: 6,
+            minWidth: 0,
+            overflow: 'hidden',
             borderLeft: `3px solid ${
               currentMonotony?.tone === 'good'
                 ? 'var(--status-success)'
@@ -649,16 +703,22 @@ export default function DashboardScreen({
             }`,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flex: 1,
+                minWidth: 0,
               }}
             >
-              Monotony & Strain
+              Monotony
             </span>
             {currentMonotony && (
               <FormStatusBadge status={currentMonotony.label} tone={currentMonotony.tone} />
@@ -669,6 +729,7 @@ export default function DashboardScreen({
               style={{
                 fontFamily: 'var(--font-display)',
                 fontSize: 'var(--text-2xl)',
+                lineHeight: 1.1,
                 color:
                   currentMonotony?.tone === 'good'
                     ? 'var(--status-success)'
@@ -685,7 +746,7 @@ export default function DashboardScreen({
               {currentMonotony ? `Strain ${currentMonotony.strain}` : ''}
             </span>
           </div>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {currentMonotony ? currentMonotony.description : '7-day load variance'}
           </span>
         </div>
