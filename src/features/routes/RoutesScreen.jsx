@@ -5,6 +5,7 @@ import { avgSpeed } from '../../data/metrics.js'
 import { formatShortDate, formatDuration, recordDate } from '../../data/dates.js'
 import { SURFACES, DIFFICULTIES } from '../../settings.js'
 import { EmptyState } from '../../components/ui.jsx'
+import SegmentsCard from './SegmentsCard.jsx'
 
 /**
  * The route library, plus what riding each one has actually looked like.
@@ -63,6 +64,10 @@ export default function RoutesScreen({ routes, rides, refresh, showToast, setPen
       </div>
 
       {showForm && <RouteForm onSave={handleSave} onCancel={() => setShowForm(false)} />}
+
+      {/* GPS-matched repeat efforts. Sits above the library because it needs no
+          upkeep — segments appear on their own as tracked rides accumulate. */}
+      <SegmentsCard rides={rides} />
 
       {routes.length === 0 && !showForm && (
         <EmptyState>No routes yet. Add the trails you ride most.</EmptyState>

@@ -339,6 +339,16 @@ async function main() {
   const routesText = await page.locator('.app-main').innerText()
   check('the route library lists Slaughter Pen', routesText.includes('Slaughter Pen Loop'), true)
   check('per-route ride counts appear', routesText.includes('Ridden'), true)
+  // The ride logged above was entered by hand, so it carries no GPS track and
+  // there is nothing to match. The card must say that rather than crash or
+  // imply a segment exists.
+  // Headings are uppercased by CSS, so compare case-insensitively.
+  check('the segments card renders', /repeat segments/i.test(routesText), true)
+  check(
+    'and reports honestly that there is nothing to match yet',
+    /Segments are found automatically/.test(routesText),
+    true,
+  )
 
   console.log('\nLayout')
   const overflow = await page.evaluate(

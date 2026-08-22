@@ -9,11 +9,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint src tests",
-    "test": "node tests/metrics.js",
+    "test": "node tests/metrics.js && node tests/segments.js",
     "test:ui": "node tests/ui.js",
     "test:queue": "node tests/queue.js",
     "check": "npm run lint && npm run build && npm test",
-    "test:gpx": "node tests/gpx.js"
+    "test:gpx": "node tests/gpx.js",
+    "test:segments": "node tests/segments.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",

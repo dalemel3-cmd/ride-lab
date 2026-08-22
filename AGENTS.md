@@ -101,7 +101,12 @@ These are product decisions, not preferences. Please don't "improve" them.
   overwriting could destroy something typed.
 - **Compare like with like.** Beats-per-mile is grouped by surface, because
   singletrack costs far more per mile than pavement at identical fitness.
-  Comparing across surfaces measures the trail, not the rider.
+  Comparing across surfaces measures the trail, not the rider. GPS segments
+  (`src/data/segments.js`) are the strongest version of this: same ground, so
+  terrain is eliminated rather than merely grouped.
+- **Segment heart rate is the ride's, not the segment's.** GPX heart-rate
+  samples are parsed but not stored on the track, so a per-segment average
+  would be fabricated. The UI says so explicitly; don't quietly relabel it.
 
 ## Integrations
 
@@ -125,10 +130,11 @@ data type at all. Both were assumptions that a probe disproved in seconds.
 
 ```
 src/
-  data/        store.js (offline queue), metrics.js (pure), dates.js, gpx.js
+  data/        store.js (offline queue), metrics.js (pure), dates.js, gpx.js,
+               segments.js (GPS segment matching, pure)
   features/    rides, body, journal, routes, progress, settings
   settings.js  every tunable value, with bounds
 db/            SQL migrations, applied in order
 supabase/functions/   Edge Functions — deployed separately from the front end
-tests/         metrics (node), ui/queue/gpx (playwright)
+tests/         metrics + segments (node), ui/queue/gpx (playwright)
 ```
