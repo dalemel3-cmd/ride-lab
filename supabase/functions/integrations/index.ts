@@ -398,20 +398,20 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
           const bpm = findNumber(point, ['beatsPerMinute', 'beats_per_minute', 'bpm'])
           if (bpm !== null) row.resting_hr = Math.round(bpm)
         } else if (key === 'hrv') {
-          // Several plausible names, because the exact one is undocumented and
-          // the previous single guess silently imported nothing for weeks.
+          // Read off a live sample rather than guessed a third time. Google
+          // spells it out in full — none of the plausible abbreviations tried
+          // before were close — and it is rMSSD, the standard short-term HRV
+          // measure. The shorter names stay as fallbacks for other platforms.
           // Deliberately no generic `value` key: findNumber searches nested
           // objects, and a bare `value` would happily match something that is
           // not a duration at all.
           const ms = findNumber(point, [
+            'rootMeanSquareOfSuccessiveDifferencesMilliseconds',
+            'root_mean_square_of_successive_differences_milliseconds',
             'averageHeartRateVariabilityMilliseconds',
-            'average_heart_rate_variability_milliseconds',
             'heartRateVariabilityMilliseconds',
-            'heart_rate_variability_milliseconds',
             'rmssdMilliseconds',
-            'rmssd_milliseconds',
             'rmssd',
-            'milliseconds',
           ])
           // A plausible physiological range, so a misread field is dropped
           // rather than charted. Adult resting rMSSD runs roughly 10–200 ms.
@@ -483,6 +483,15 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
     notes.push(`sleep: ${String((error as Error).message ?? error).slice(0, 160)}`)
   }
 
+  // Ride heart rate, matched onto tracks that have none. Runs last so a
+  // failure here cannot cost the body and sleep rows already written.
+  let hrFill = { ridesUpdated: 0, pointsMatched: 0 }
+  try {
+    hrFill = await backfillRideHeartRate(admin, userId, token, sinceDays, notes)
+  } catch (error) {
+    notes.push(`heart rate: ${String((error as Error).message ?? error).slice(0, 160)}`)
+  }
+
   await admin
     .from('integrations')
     .update({ last_synced_at: new Date().toISOString() })
@@ -492,8 +501,152 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
   return {
     connected: true,
     imported: bodyRows.length + sleepRows.length,
+    ridesGivenHeartRate: hrFill.ridesUpdated || undefined,
     notes: notes.length ? notes : undefined,
   }
+}
+
+/** How far a heart-rate sample may sit from a track point and still match it. */
+const MAX_MATCH_MS = 90_000
+
+/**
+ * Fill in heart rate on rides that were recorded without it.
+ *
+ * Google Health carries per-sample heart rate from a Fitbit with real
+ * timestamps, and a GPS track is a list of positions with timestamps. Matching
+ * the two by time turns a ride logged as distance-and-duration into one that
+ * can be analysed physiologically — time in zones, beats per mile, training
+ * impulse — retroactively, with no strap and without re-riding it.
+ *
+ * Rules that keep this honest:
+ *
+ *   - A track that already carries heart rate is never touched. A chest strap
+ *     measures at the chest every second; this is a wrist reading interpolated
+ *     onto a route, and the better data must always win.
+ *   - A track point with no sample within MAX_MATCH_MS keeps its null. Wrist
+ *     heart rate is sampled sparsely at rest, and stretching one reading across
+ *     a ten-minute gap would invent a plateau that never happened.
+ *   - Ride-level avg_hr and max_hr are filled only when empty, so a figure
+ *     typed from a head unit is never overwritten by a derived one.
+ */
+async function backfillRideHeartRate(
+  admin: ReturnType<typeof adminClient>,
+  userId: string,
+  token: string,
+  sinceDays: number,
+  notes: string[],
+) {
+  const since = new Date(Date.now() - sinceDays * 86400000).toISOString()
+
+  const { data: rides } = await admin
+    .from('rides')
+    .select('id, ridden_at, track, avg_hr, max_hr')
+    .eq('user_id', userId)
+    .gte('ridden_at', since)
+    .not('track', 'is', null)
+
+  let ridesUpdated = 0
+  let pointsMatched = 0
+
+  for (const ride of rides ?? []) {
+    const track = ride.track as unknown[]
+    if (!Array.isArray(track) || track.length < 2) continue
+
+    // Already has heart rate from a strap or a GPX file — leave it alone.
+    if (track.some((p) => Array.isArray(p) && p[4] != null)) continue
+
+    const times = track
+      .map((p) => (Array.isArray(p) ? Number(p[2]) : NaN))
+      .filter((t) => Number.isFinite(t) && t > 0)
+    if (times.length < 2) continue
+
+    const start = Math.min(...times)
+    const end = Math.max(...times)
+
+    try {
+      // Only this ride's own window, so the query stays small however long the
+      // sync window is. Widened either side so a sample just before the first
+      // fix can still match it.
+      const from = new Date(start - MAX_MATCH_MS).toISOString()
+      const to = new Date(end + MAX_MATCH_MS).toISOString()
+      const filter =
+        `heart_rate.sample_time.physical_time >= "${from}" AND ` +
+        `heart_rate.sample_time.physical_time <= "${to}"`
+
+      const points = await googleListAll(token, 'heart-rate', filter, 40)
+
+      const samples: { t: number; bpm: number }[] = []
+      for (const point of points) {
+        const iso = findTime(point, ['physicalTime', 'physical_time'])
+        const bpm = findNumber(point, ['beatsPerMinute', 'beats_per_minute', 'bpm'])
+        // Google sends beatsPerMinute as a string; findNumber already coerces.
+        if (!iso || bpm === null || bpm <= 0) continue
+        const t = new Date(iso).getTime()
+        if (Number.isFinite(t)) samples.push({ t, bpm })
+      }
+
+      if (samples.length === 0) {
+        notes.push(`heart rate: no samples covering the ${ride.ridden_at.slice(0, 10)} ride`)
+        continue
+      }
+
+      samples.sort((a, b) => a.t - b.t)
+
+      // Walking pointer rather than a search per point: both lists are sorted,
+      // so one pass is enough even for a long ride against dense samples.
+      let cursor = 0
+      let matched = 0
+      const filled = track.map((p) => {
+        if (!Array.isArray(p)) return p
+        const t = Number(p[2])
+        if (!Number.isFinite(t) || t <= 0) return p
+
+        while (cursor < samples.length - 1 && samples[cursor + 1].t <= t) cursor += 1
+
+        // The nearer of the two samples bracketing this point.
+        const before = samples[cursor]
+        const after = samples[Math.min(cursor + 1, samples.length - 1)]
+        const nearest =
+          Math.abs(before.t - t) <= Math.abs(after.t - t) ? before : after
+
+        if (Math.abs(nearest.t - t) > MAX_MATCH_MS) return p
+        matched += 1
+        const next = [...p]
+        next[4] = Math.round(nearest.bpm)
+        return next
+      })
+
+      if (matched === 0) {
+        notes.push(`heart rate: samples found but none within 90s of the ${ride.ridden_at.slice(0, 10)} ride`)
+        continue
+      }
+
+      const matchedBpm = filled
+        .map((p) => (Array.isArray(p) ? Number(p[4]) : NaN))
+        .filter((n) => Number.isFinite(n) && n > 0)
+
+      const update: Record<string, unknown> = { track: filled }
+      if (ride.avg_hr == null && matchedBpm.length > 0) {
+        update.avg_hr = Math.round(matchedBpm.reduce((s, n) => s + n, 0) / matchedBpm.length)
+      }
+      if (ride.max_hr == null && matchedBpm.length > 0) {
+        update.max_hr = Math.max(...matchedBpm)
+      }
+
+      const { error } = await admin.from('rides').update(update).eq('id', ride.id)
+      if (error) throw error
+
+      ridesUpdated += 1
+      pointsMatched += matched
+      notes.push(
+        `heart rate: filled ${matched} of ${track.length} points on the ${ride.ridden_at.slice(0, 10)} ride`,
+      )
+    } catch (error) {
+      notes.push(`heart rate (${ride.ridden_at.slice(0, 10)}): ${String((error as Error).message ?? error).slice(0, 160)}`)
+    }
+  }
+
+  return { ridesUpdated, pointsMatched }
 }
 
 /**
