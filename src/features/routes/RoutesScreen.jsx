@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import {
   Plus,
   Trash2,
@@ -6,12 +6,15 @@ import {
   Navigation,
   Compass,
   Download,
+  Upload,
   Play,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { avgSpeed } from '../../data/metrics.js'
+import { parseGpx } from '../../data/gpx.js'
+import { fireConfetti } from '../../components/confetti.js'
 import { formatShortDate, formatDuration, recordDate } from '../../data/dates.js'
 import { SURFACES, DIFFICULTIES } from '../../settings.js'
 import { EmptyState } from '../../components/ui.jsx'
@@ -43,11 +46,52 @@ export default function RoutesScreen({
   onNavigate,
 }) {
   const [showForm, setShowForm] = useState(false)
+  const [formInitial, setFormInitial] = useState(null)
   const [expandedCues, setExpandedCues] = useState({})
   const [categoryFilter, setCategoryFilter] = useState('all') // all | weekday | weekend
+  const fileInputRef = useRef(null)
 
   const toggleCues = (id) => {
     setExpandedCues((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  function handleGpxFile(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    event.target.value = ''
+
+    const reader = new FileReader()
+    reader.addEventListener('load', (e) => {
+      try {
+        const text = e.target.result
+        const parsed = parseGpx(text)
+        if (!parsed || !parsed.track || parsed.track.length === 0) {
+          showToast('No usable GPS track found in that GPX file', 'error')
+          return
+        }
+
+        const routeName =
+          parsed.name ||
+          file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ')
+
+        setFormInitial({
+          name: routeName,
+          area: 'Bentonville / NWA',
+          distance_mi: parsed.distanceMi != null ? parsed.distanceMi : '',
+          elevation_ft: parsed.elevationFt != null ? parsed.elevationFt : '',
+          surface: 'paved-trail',
+          difficulty: 'green',
+          notes: `Imported GPX route (${parsed.distanceMi || 0} mi, ${parsed.elevationFt || 0} ft climb).`,
+          track: parsed.track,
+        })
+        setShowForm(true)
+        fireConfetti({ particleCount: 50 })
+        showToast(`Parsed GPX: "${routeName}" (${parsed.distanceMi} mi)`)
+      } catch (err) {
+        showToast(`Failed to parse GPX: ${err.message}`, 'error')
+      }
+    })
+    reader.readAsText(file)
   }
 
   const filteredRoutes = useMemo(() => {
@@ -84,6 +128,7 @@ export default function RoutesScreen({
     setPending(queueLength())
     showToast(synced ? 'Route saved' : 'Saved on device — will sync when back online')
     setShowForm(false)
+    setFormInitial(null)
     refresh()
   }
 
@@ -138,9 +183,77 @@ ${trkpts}
     <div className="screen">
       <div className="screen-header">
         <h2>Routes & Navigation</h2>
-        <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
-          <Plus size={18} aria-hidden="true" /> {showForm ? 'Close' : 'Add'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Import a GPX route file"
+            title="Import GPX Route"
+          >
+            <Upload size={18} aria-hidden="true" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".gpx,application/gpx+xml,application/xml,text/xml"
+            onChange={handleGpxFile}
+            style={{ display: 'none' }}
+          />
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setFormInitial(null)
+              setShowForm((v) => !v)
+            }}
+          >
+            <Plus size={18} aria-hidden="true" /> {showForm ? 'Close' : 'Add'}
+          </button>
+        </div>
+      </div>
+
+      {/* 1-TAP HERO GPX ROUTE DROPZONE */}
+      <div
+        className="gpx-hero-dropzone"
+        onClick={() => fileInputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: 'rgba(34, 211, 238, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Upload size={18} color="var(--color-accent)" />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
+              1-Tap Import GPX Route File
+            </strong>
+            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+              Drop or choose a GPX from Strava, AllTrails, RideWithGPS, or Garmin
+            </span>
+          </div>
+        </div>
+        <span
+          className="btn"
+          style={{
+            pointerEvents: 'none',
+            fontSize: 'var(--text-xs)',
+            padding: '4px 10px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Select File
+        </span>
       </div>
 
       {/* CATEGORY FILTER CHIPS */}
@@ -168,7 +281,16 @@ ${trkpts}
         </button>
       </div>
 
-      {showForm && <RouteForm onSave={handleSave} onCancel={() => setShowForm(false)} />}
+      {showForm && (
+        <RouteForm
+          initial={formInitial}
+          onSave={handleSave}
+          onCancel={() => {
+            setShowForm(false)
+            setFormInitial(null)
+          }}
+        />
+      )}
 
       {/* GPS-matched repeat efforts. Sits above the library because it needs no
           upkeep — segments appear on their own as tracked rides accumulate. */}
@@ -442,20 +564,22 @@ ${trkpts}
   )
 }
 
-function RouteForm({ onSave, onCancel }) {
-  const [form, setForm] = useState({
-    name: '',
-    area: '',
-    distance_mi: '',
-    elevation_ft: '',
-    surface: 'singletrack',
-    difficulty: 'blue',
-    notes: '',
-  })
+function RouteForm({ initial, onSave, onCancel }) {
+  const [form, setForm] = useState(() => ({
+    name: initial?.name ?? '',
+    area: initial?.area ?? '',
+    distance_mi: initial?.distance_mi ?? '',
+    elevation_ft: initial?.elevation_ft ?? '',
+    surface: initial?.surface ?? 'paved-trail',
+    difficulty: initial?.difficulty ?? 'green',
+    destination: initial?.destination ?? '',
+    notes: initial?.notes ?? '',
+    track: initial?.track ?? null,
+  }))
   const [busy, setBusy] = useState(false)
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
-  const num = (v) => (v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null)
+  const num = (v) => (v === '' || v == null ? null : Number.isFinite(Number(v)) ? Number(v) : null)
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -469,7 +593,9 @@ function RouteForm({ onSave, onCancel }) {
         elevation_ft: num(form.elevation_ft),
         surface: form.surface || null,
         difficulty: form.difficulty || null,
+        destination: form.destination || null,
         notes: form.notes || null,
+        track: form.track || null,
       })
     } finally {
       setBusy(false)
@@ -478,14 +604,34 @@ function RouteForm({ onSave, onCancel }) {
 
   return (
     <form onSubmit={handleSubmit} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0, fontSize: 'var(--text-base)' }}>
+          {initial?.track ? 'Review & Save Imported Route' : 'Add Custom Route'}
+        </h3>
+        {form.track && Array.isArray(form.track) && (
+          <span
+            style={{
+              fontSize: 'var(--text-xs)',
+              color: 'var(--status-success)',
+              background: 'rgba(52, 211, 153, 0.1)',
+              padding: '2px 8px',
+              borderRadius: 999,
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+            }}
+          >
+            ✓ GPS Track Attached ({form.track.length} pts)
+          </span>
+        )}
+      </div>
+
       <div className="field-grid">
         <div className="full">
           <label htmlFor="route_name">Name</label>
           <input id="route_name" required value={form.name} onChange={set('name')} />
         </div>
         <div className="full">
-          <label htmlFor="area">Area</label>
-          <input id="area" placeholder="Slaughter Pen, Coler, Bella Vista…" value={form.area} onChange={set('area')} />
+          <label htmlFor="area">Area / Region</label>
+          <input id="area" placeholder="Bentonville, Rogers, Slaughter Pen, Coler…" value={form.area} onChange={set('area')} />
         </div>
         <div>
           <label htmlFor="route_distance">Distance (mi)</label>
@@ -516,14 +662,23 @@ function RouteForm({ onSave, onCancel }) {
           </select>
         </div>
         <div className="full">
-          <label htmlFor="route_notes">Notes</label>
+          <label htmlFor="route_destination">Destination / Trailhead Address</label>
+          <input
+            id="route_destination"
+            placeholder="e.g. Mercy Trailhead, 5204 W Village Pkwy, Rogers, AR"
+            value={form.destination}
+            onChange={set('destination')}
+          />
+        </div>
+        <div className="full">
+          <label htmlFor="route_notes">Notes / Landmarks</label>
           <textarea id="route_notes" style={{ minHeight: 64 }} value={form.notes} onChange={set('notes')} />
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={busy}>
-          {busy ? 'Saving…' : 'Save route'}
+          {busy ? 'Saving…' : 'Save route to library'}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
           Cancel

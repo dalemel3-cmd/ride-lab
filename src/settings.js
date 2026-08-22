@@ -104,6 +104,34 @@ export const DIFFICULTIES = [
  */
 export const SEED_ROUTES = [
   {
+    name: 'Razorback Greenway Direct Benchmark (Optimized)',
+    area: 'Bentonville → Rogers Greenway',
+    distance_mi: 12.0,
+    elevation_ft: 220,
+    surface: 'paved-trail',
+    difficulty: 'green',
+    destination: 'Mercy Trailhead, 2710 S Rife Medical Ln, Rogers, AR',
+    notes: 'Optimized unbroken Zone 2 flow. Direct east on SW 8th cyclepath onto Greenway south through underpasses to Mercy/Railyard. Zero stoplights, pure steady cadence.',
+    cues: [
+      'Depart 1105 SW Grand Blvd north on SW Rainbow to SW 8th Street (0.5 mi)',
+      'Ride East on SW 8th wide multi-use trail straight to 8th St Market / Razorback Greenway (1.2 mi)',
+      'Hop onto Razorback Greenway South (Grade-separated paved trail with road underpasses)',
+      'Cruise uninterrupted past Lake Bentonville and Promenade to Mercy Trailhead turnaround (6.0 mi)',
+      'Return North on Greenway, exit at SW 8th trail back west to 1105 SW Grand Blvd (12.0 mi total)',
+    ],
+    track: [
+      [36.357, -94.225, 0],
+      [36.365, -94.215, 0],
+      [36.355, -94.205, 0],
+      [36.335, -94.195, 0],
+      [36.315, -94.175, 0],
+      [36.335, -94.195, 0],
+      [36.355, -94.205, 0],
+      [36.365, -94.215, 0],
+      [36.357, -94.225, 0],
+    ],
+  },
+  {
     name: 'Razorback Greenway (Zone 2 Baseline)',
     area: 'Bentonville South → Rogers',
     distance_mi: 14.5,
