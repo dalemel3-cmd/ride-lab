@@ -55,6 +55,22 @@ arithmetic. Always read through the accessors in `src/data/track.js`; never
 index a track directly. Elevation is stored in **metres** (GPX's native unit)
 and converted to feet only for display.
 
+**Recording has two clocks and two pauses.** `elapsedFrom()` reports *moving*
+time: `startedAtRef` is null whenever the clock is frozen, so stopped time never
+accumulates. A manual pause stops the GPS watch; an auto-pause must not, because
+it has to keep watching to notice the rider moving again. Auto-pause is
+windowed, so it lags a few seconds at each transition — it undercounts moving
+time slightly rather than counting stops as riding, which is the right direction
+to err.
+
+**Web Bluetooth is Android and desktop only.** Safari on iOS has no
+`navigator.bluetooth`, so heart-rate straps cannot work there. `isSupported()`
+gates the UI and the fallback text says why — don't "fix" it by hiding the
+message. The measurement packet (GATT 0x2A37) has a flags byte whose bit 0
+selects uint8 vs little-endian uint16; reading the wrong width returns plausible
+nonsense rather than throwing, which is why `parseHeartRateMeasurement` is pure
+and tested rather than inlined in the listener.
+
 **A neutral starting value is not a result.** `dailyReadiness` begins at 75 as an
 anchor for real signals to move. It counts how many actually contributed and
 returns `null` when that is zero — otherwise an empty account scored a fixed 77
@@ -144,10 +160,13 @@ data type at all. Both were assumptions that a probe disproved in seconds.
 ```
 src/
   data/        store.js (offline queue), metrics.js (pure), dates.js, gpx.js,
-               segments.js (GPS segment matching), track.js (point accessors)
+               segments.js (GPS matching), track.js (point accessors),
+               recording.js (auto-pause, live pace, BLE parsing),
+               heartRateSensor.js (Web Bluetooth)
   features/    rides, body, journal, routes, progress, settings
   settings.js  every tunable value, with bounds
 db/            SQL migrations, applied in order
 supabase/functions/   Edge Functions — deployed separately from the front end
-tests/         metrics + track + segments (node), ui/queue/gpx (playwright)
+tests/         metrics + track + recording + segments (node),
+               ui/queue/gpx (playwright)
 ```

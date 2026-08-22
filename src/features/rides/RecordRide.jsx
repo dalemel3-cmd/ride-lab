@@ -1,26 +1,48 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Play, Pause, Square, Satellite } from 'lucide-react'
-import { trackDistanceMiles } from '../../data/metrics.js'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Play, Pause, Square, Satellite, HeartPulse, Mountain, Gauge } from 'lucide-react'
+import { trackDistanceMiles, hrZone } from '../../data/metrics.js'
 import { formatStopwatch } from '../../data/dates.js'
+import { METERS_TO_FEET } from '../../data/track.js'
+import {
+  currentSpeedMph,
+  shouldAutoPause,
+  climbSoFarMeters,
+  AUTO_PAUSE_MPH,
+} from '../../data/recording.js'
+import { isSupported as bluetoothSupported, connectHeartRate } from '../../data/heartRateSensor.js'
 import RouteMap from './RouteMap.jsx'
 
 /**
- * GPS ride recording via the browser Geolocation API.
+ * GPS ride recording via the browser Geolocation API, with optional heart rate
+ * from a Bluetooth strap.
  *
- * Scope is deliberate: this records a track and a distance, then hands both to
- * the ride form to finish. It is not trying to be a head unit — no navigation,
- * no live segments. What it must do is not lose the track, which is why points
- * are mirrored to localStorage on every update.
+ * Scope is deliberate: this records a track and hands it to the ride form to
+ * finish. It is not trying to be a head unit — no navigation, no live segments.
+ * What it must do is not lose the track, which is why points are mirrored to
+ * localStorage on every update.
  */
 
 const DRAFT_KEY = 'ridelab_active_recording'
 
-export default function RecordRide({ onFinish, onCancel }) {
+export default function RecordRide({ onFinish, onCancel, maxHr }) {
   const [state, setState] = useState('idle') // idle | recording | paused
   const [track, setTrack] = useState([])
   const [elapsedMs, setElapsedMs] = useState(0)
   const [accuracy, setAccuracy] = useState(null)
   const [error, setError] = useState(null)
+
+  // Auto-pause is separate from a manual pause: it has to keep watching GPS to
+  // notice the rider moving again, where a manual pause deliberately stops.
+  const [autoPaused, setAutoPaused] = useState(false)
+
+  const [heartRate, setHeartRate] = useState(null)
+  const [strap, setStrap] = useState(null)
+  const [strapStatus, setStrapStatus] = useState('idle') // idle | connecting | connected | dropped
+
+  // Latest reading, read inside the geolocation callback. State would be stale
+  // there — the callback closes over the value from the render that registered
+  // it, which on a long ride is minutes old.
+  const heartRateRef = useRef(null)
 
   const watchIdRef = useRef(null)
   const wakeLockRef = useRef(null)
@@ -31,6 +53,33 @@ export default function RecordRide({ onFinish, onCancel }) {
   const accumulatedRef = useRef(0)
 
   const distanceMi = trackDistanceMiles(track)
+
+  const liveSpeed = useMemo(() => currentSpeedMph(track), [track])
+  const climbM = useMemo(() => climbSoFarMeters(track), [track])
+
+  // Averaged over the ride's own points, so the figure handed to the form is
+  // measured rather than estimated.
+  const { averageRecordedHr, maxRecordedHr } = useMemo(() => {
+    let sum = 0
+    let count = 0
+    let peak = null
+    for (const point of track) {
+      const bpm = point[4]
+      if (typeof bpm !== 'number' || !Number.isFinite(bpm) || bpm <= 0) continue
+      sum += bpm
+      count += 1
+      if (peak === null || bpm > peak) peak = bpm
+    }
+    return {
+      averageRecordedHr: count > 0 ? Math.round(sum / count) : null,
+      maxRecordedHr: peak,
+    }
+  }, [track])
+
+  // hrZone returns the whole zone descriptor — number, label, colour, and what
+  // it does physiologically — so the readout can explain itself mid-ride.
+  const zone = heartRate != null && maxHr ? hrZone(heartRate, maxHr) : null
+  const zoneColor = zone?.color ?? 'var(--color-text-muted)'
 
   // Recover a recording interrupted by a crash, a reload, or iOS reclaiming the
   // tab — the one failure mode that would otherwise cost a whole ride.
@@ -47,6 +96,19 @@ export default function RecordRide({ onFinish, onCancel }) {
       /* nothing recoverable */
     }
   }, [])
+
+  /**
+   * Moving time so far.
+   *
+   * `startedAtRef` is null whenever the clock is frozen — auto-paused, or
+   * manually paused — so the running segment contributes nothing and stopped
+   * time never reaches the total. This is what keeps a five-minute trailhead
+   * stop from dragging down average speed and inflating VAM.
+   */
+  const elapsedFrom = useCallback(
+    () => accumulatedRef.current + (startedAtRef.current ? Date.now() - startedAtRef.current : 0),
+    [],
+  )
 
   const persistDraft = useCallback((nextTrack, nextElapsed) => {
     try {
@@ -67,11 +129,9 @@ export default function RecordRide({ onFinish, onCancel }) {
   // Tick the display. The value shown is computed from wall-clock time.
   useEffect(() => {
     if (state !== 'recording') return
-    const id = setInterval(() => {
-      setElapsedMs(accumulatedRef.current + (Date.now() - (startedAtRef.current ?? Date.now())))
-    }, 1000)
+    const id = setInterval(() => setElapsedMs(elapsedFrom()), 1000)
     return () => clearInterval(id)
-  }, [state])
+  }, [state, elapsedFrom])
 
   /**
    * Ask the screen to stay awake.
@@ -93,6 +153,49 @@ export default function RecordRide({ onFinish, onCancel }) {
       /* denied or unsupported — recording continues either way */
     }
   }, [])
+
+  async function handleConnectStrap() {
+    setError(null)
+    setStrapStatus('connecting')
+    try {
+      const handle = await connectHeartRate({
+        onReading: (bpm) => {
+          heartRateRef.current = bpm
+          setHeartRate(bpm)
+        },
+        onStatus: (status) => {
+          setStrapStatus(status === 'connected' ? 'connected' : 'dropped')
+          // A stale number looks live and is worse than none, so the reading is
+          // cleared the moment the link drops.
+          if (status !== 'connected') {
+            heartRateRef.current = null
+            setHeartRate(null)
+          }
+        },
+      })
+      setStrap(handle)
+      setStrapStatus('connected')
+    } catch (err) {
+      setStrapStatus('idle')
+      setError(err.message)
+    }
+  }
+
+  async function handleDisconnectStrap() {
+    await strap?.disconnect().catch(() => {})
+    setStrap(null)
+    setStrapStatus('idle')
+    heartRateRef.current = null
+    setHeartRate(null)
+  }
+
+  // Release the strap if the screen unmounts mid-ride, so the connection does
+  // not outlive the recording it belongs to.
+  useEffect(() => {
+    return () => {
+      strap?.disconnect().catch(() => {})
+    }
+  }, [strap])
 
   const stopWatching = useCallback(() => {
     if (watchIdRef.current !== null) {
@@ -132,6 +235,11 @@ export default function RecordRide({ onFinish, onCancel }) {
         const { latitude, longitude, accuracy: acc, altitude, altitudeAccuracy } = position.coords
         setAccuracy(acc)
 
+        // A fix arrived, so any earlier "no GPS" warning is stale. Without
+        // this it stays on screen for the rest of the ride, telling the rider
+        // recording has failed while the track is visibly being drawn.
+        setError((current) => (current && current.startsWith('Could not get a GPS fix') ? null : current))
+
         // Drop garbage fixes. Early points from a cold GPS can be hundreds of
         // metres off and would add phantom miles to the distance.
         if (acc != null && acc > 50) return
@@ -148,10 +256,30 @@ export default function RecordRide({ onFinish, onCancel }) {
             : null
 
         setTrack((prev) => {
-          // Heart rate is null: browsers cannot read a chest strap or watch.
-          // It arrives via GPX import instead.
-          const next = [...prev, [latitude, longitude, position.timestamp, elevationM, null]]
-          persistDraft(next, accumulatedRef.current + (Date.now() - (startedAtRef.current ?? Date.now())))
+          // Heart rate comes from a paired Bluetooth strap, and is null when
+          // none is connected or the link has dropped. Read from a ref, because
+          // this callback closes over state from the render that registered it.
+          const next = [
+            ...prev,
+            [latitude, longitude, position.timestamp, elevationM, heartRateRef.current],
+          ]
+
+          // Auto-pause runs off the same points that drive the display, so the
+          // clock and the map can never disagree about whether the rider moved.
+          const stopped = shouldAutoPause(next)
+          setAutoPaused((wasPaused) => {
+            if (stopped === wasPaused) return wasPaused
+            if (stopped) {
+              // Freeze the clock: bank the time ridden so far and stop counting.
+              accumulatedRef.current += Date.now() - (startedAtRef.current ?? Date.now())
+              startedAtRef.current = null
+            } else {
+              startedAtRef.current = Date.now()
+            }
+            return stopped
+          })
+
+          persistDraft(next, elapsedFrom())
           return next
         })
       },
@@ -177,9 +305,11 @@ export default function RecordRide({ onFinish, onCancel }) {
   }
 
   function handlePause() {
-    accumulatedRef.current += Date.now() - (startedAtRef.current ?? Date.now())
+    accumulatedRef.current = elapsedFrom()
+    startedAtRef.current = null
     setElapsedMs(accumulatedRef.current)
     stopWatching()
+    setAutoPaused(false)
     setState('paused')
   }
 
@@ -193,23 +323,28 @@ export default function RecordRide({ onFinish, onCancel }) {
   }
 
   function handleStop() {
-    const finalElapsed =
-      state === 'recording'
-        ? accumulatedRef.current + (Date.now() - (startedAtRef.current ?? Date.now()))
-        : accumulatedRef.current
+    const finalElapsed = elapsedFrom()
 
     stopWatching()
+    strap?.disconnect().catch(() => {})
     clearDraft()
 
     onFinish({
       track,
       distanceMi: Math.round(trackDistanceMiles(track) * 100) / 100,
       durationMin: Math.round((finalElapsed / 60000) * 10) / 10,
+      // Pre-fills the form so the rider is not retyping what the strap already
+      // measured. RPE is deliberately left blank — no sensor knows how hard it
+      // felt, and inferring it would fabricate the study's key subjective field.
+      avgHr: averageRecordedHr,
+      maxHr: maxRecordedHr,
+      elevationFt: climbM !== null ? Math.round(climbM * METERS_TO_FEET) : null,
     })
   }
 
   function handleDiscard() {
     stopWatching()
+    strap?.disconnect().catch(() => {})
     clearDraft()
     onCancel()
   }
@@ -221,6 +356,18 @@ export default function RecordRide({ onFinish, onCancel }) {
         <strong style={{ fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>
           Recording
         </strong>
+        {autoPaused && (
+          <span
+            style={{
+              color: 'var(--status-warn)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+            }}
+          >
+            Auto-paused
+          </span>
+        )}
         {accuracy != null && (
           <span className="muted" style={{ marginLeft: 'auto' }}>
             ±{Math.round(accuracy)}m
@@ -245,9 +392,68 @@ export default function RecordRide({ onFinish, onCancel }) {
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)' }}>
             {formatStopwatch(elapsedMs)}
           </div>
-          <div className="muted">elapsed</div>
+          <div className="muted">{autoPaused ? 'moving time (paused)' : 'moving time'}</div>
         </div>
       </div>
+
+      {/* Live heart rate, the reason a strap is worth pairing at all. */}
+      {heartRate != null && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-md)',
+            border: `1px solid ${zoneColor}`,
+            background: `color-mix(in srgb, ${zoneColor} 12%, transparent)`,
+          }}
+        >
+          <HeartPulse size={22} color={zoneColor} aria-hidden="true" style={{ flexShrink: 0 }} />
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexShrink: 0 }}>
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--text-2xl)',
+                color: zoneColor,
+              }}
+            >
+              {heartRate}
+            </span>
+            <span className="muted">bpm</span>
+          </div>
+          {zone && (
+            <div style={{ marginLeft: 'auto', textAlign: 'right', minWidth: 0 }}>
+              <div style={{ color: zoneColor, fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                Zone {zone.zone} · {zone.label}
+              </div>
+              <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                {zone.effect}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Secondary readouts. Each hides itself rather than showing a zero,
+          because "0 mph" and "0 ft" read as measurements when they are really
+          "not known yet". */}
+      {(liveSpeed !== null || climbM !== null) && (
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          {liveSpeed !== null && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-sm)' }}>
+              <Gauge size={16} color="var(--color-accent)" aria-hidden="true" />
+              {liveSpeed.toFixed(1)} mph now
+            </span>
+          )}
+          {climbM !== null && climbM > 0 && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-sm)' }}>
+              <Mountain size={16} color="var(--color-accent)" aria-hidden="true" />
+              {Math.round(climbM * METERS_TO_FEET)} ft climbed
+            </span>
+          )}
+        </div>
+      )}
 
       {track.length > 1 && <RouteMap track={track} height={140} />}
 
@@ -257,10 +463,54 @@ export default function RecordRide({ onFinish, onCancel }) {
         </p>
       )}
 
+      {/* Strap pairing. Offered whether or not recording has started, so the
+          link can be established before rolling out. */}
+      {bluetoothSupported() ? (
+        strapStatus === 'connected' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-sm)' }}>
+            <HeartPulse size={16} color="var(--status-success)" aria-hidden="true" />
+            <span className="muted">{strap?.deviceName ?? 'Strap'} connected</span>
+            <button
+              className="btn"
+              style={{ marginLeft: 'auto', padding: '6px 10px', minHeight: 'var(--tap-target)' }}
+              onClick={handleDisconnectStrap}
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <button className="btn" onClick={handleConnectStrap} disabled={strapStatus === 'connecting'}>
+              <HeartPulse size={18} aria-hidden="true" />
+              {strapStatus === 'connecting'
+                ? 'Searching…'
+                : strapStatus === 'dropped'
+                  ? 'Reconnect heart-rate strap'
+                  : 'Connect heart-rate strap'}
+            </button>
+            {strapStatus === 'dropped' && (
+              <p className="muted" style={{ margin: 0, color: 'var(--status-warn)' }}>
+                The strap disconnected. Recording continues — points from here on carry no heart
+                rate until it reconnects.
+              </p>
+            )}
+          </div>
+        )
+      ) : (
+        // Saying why is more useful than hiding the feature and leaving the
+        // rider to wonder whether their strap is broken.
+        <p className="muted" style={{ margin: 0, fontSize: 'var(--text-xs)' }}>
+          Heart-rate straps need Web Bluetooth, which this browser does not support. Chrome on
+          Android works; Safari on iPhone does not. Importing a GPX file from a head unit still
+          brings heart rate in.
+        </p>
+      )}
+
       {state === 'idle' && track.length === 0 && (
         <p className="muted" style={{ margin: 0 }}>
           Keep this screen open while you ride. Points are saved as you go, so a crash or a locked
-          phone will not lose the track.
+          phone will not lose the track. Recording pauses itself below {AUTO_PAUSE_MPH} mph, so
+          stops do not count as riding time.
         </p>
       )}
 

@@ -56,14 +56,19 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
     refresh()
   }
 
-  function handleRecordingFinished({ track, distanceMi, durationMin }) {
-    // Hand the measured numbers to the manual form so HR and RPE — the things
-    // GPS can't know — get filled in while the ride is still fresh.
+  function handleRecordingFinished({ track, distanceMi, durationMin, avgHr, maxHr, elevationFt }) {
+    // Hand the measured numbers to the manual form so RPE — the one thing no
+    // sensor can know — gets filled in while the ride is still fresh. Heart
+    // rate and climb are prefilled only when they were actually measured; a
+    // strap-less ride leaves those fields blank rather than showing a zero.
     setPrefill({
       date: toDateString(),
       time: toTimeString(),
       distance_mi: distanceMi,
       duration_min: durationMin,
+      ...(avgHr != null ? { avg_hr: avgHr } : {}),
+      ...(maxHr != null ? { max_hr: maxHr } : {}),
+      ...(elevationFt != null ? { elevation_ft: elevationFt } : {}),
       track,
     })
     setMode('form')
@@ -111,7 +116,11 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
         <div className="screen-header">
           <h2>Record ride</h2>
         </div>
-        <RecordRide onFinish={handleRecordingFinished} onCancel={() => setMode('list')} />
+        <RecordRide
+          onFinish={handleRecordingFinished}
+          onCancel={() => setMode('list')}
+          maxHr={settings?.maxHr}
+        />
       </div>
     )
   }
