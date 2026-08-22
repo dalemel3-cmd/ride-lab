@@ -86,6 +86,22 @@ export async function syncIntegrations({ provider, sinceDays = 30 } = {}) {
 }
 
 /**
+ * Ask a provider what data types it actually exposes for this account.
+ *
+ * Providers document their catalogues badly. Google Health publishes neither
+ * units nor most data type identifiers: weight arrives as `weightGrams`, and
+ * `resting-heart-rate` — the obvious name — is not a data type at all. Both
+ * were assumptions a live call disproved in seconds.
+ *
+ * This existed only as a server action reachable from a console snippet, so the
+ * one tool for answering "why is this field always empty?" was out of reach
+ * exactly when someone hit the problem.
+ */
+export async function discoverProviderTypes(provider) {
+  return callFunction('integrations', { action: 'discover', provider })
+}
+
+/**
  * Read the ?connect=… status the OAuth callback redirects back with, and strip
  * it from the URL so a refresh doesn't replay the message.
  */

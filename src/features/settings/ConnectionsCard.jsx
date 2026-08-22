@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link2, RefreshCw, Unlink } from 'lucide-react'
+import { Link2, RefreshCw, Unlink, Stethoscope } from 'lucide-react'
 import {
   getIntegrationStatus,
   getIntegrationConfig,
@@ -7,6 +7,7 @@ import {
   disconnectProvider,
   syncIntegrations,
   readConnectResult,
+  discoverProviderTypes,
   PROVIDER_LABELS,
   PROVIDER_BLURBS,
 } from '../../data/integrations.js'
@@ -53,6 +54,8 @@ export default function ConnectionsCard({ showToast, refresh }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState(null)
+  // Raw provider capability report, shown verbatim when asked for.
+  const [discovery, setDiscovery] = useState(null)
 
   const loadStatus = useCallback(async () => {
     try {
@@ -95,6 +98,27 @@ export default function ConnectionsCard({ showToast, refresh }) {
     } catch (err) {
       setBusy(null)
       showToast(String(err.message ?? err), 'error')
+    }
+  }
+
+  /**
+   * Ask the provider what it will actually give this account.
+   *
+   * The answer is kept verbatim rather than summarised. When a field syncs as
+   * empty the useful information is usually the exact identifier the provider
+   * uses, or the exact error it returns — both of which a friendly summary
+   * would throw away.
+   */
+  async function handleDiscover(provider) {
+    setBusy(`${provider}:discover`)
+    setDiscovery(null)
+    try {
+      const result = await discoverProviderTypes(provider)
+      setDiscovery({ provider, result })
+    } catch (err) {
+      setDiscovery({ provider, error: String(err.message ?? err) })
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -246,6 +270,10 @@ export default function ConnectionsCard({ showToast, refresh }) {
                       <RefreshCw size={16} aria-hidden="true" />
                       {busy === provider ? 'Syncing…' : 'Sync now'}
                     </button>
+                    <button className="btn" onClick={() => handleDiscover(provider)} disabled={busy !== null}>
+                      <Stethoscope size={16} aria-hidden="true" />
+                      {busy === `${provider}:discover` ? 'Checking…' : 'What syncs?'}
+                    </button>
                     <button className="btn" onClick={() => handleDisconnect(provider)} disabled={busy !== null}>
                       <Unlink size={16} aria-hidden="true" /> Disconnect
                     </button>
@@ -264,6 +292,45 @@ export default function ConnectionsCard({ showToast, refresh }) {
                   </button>
                 )}
               </div>
+
+              {discovery?.provider === provider && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    padding: 10,
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--color-surface-raised)',
+                  }}
+                >
+                  <strong style={{ fontSize: 'var(--text-xs)' }}>
+                    {discovery.error ? 'Could not ask the provider' : 'What this account exposes'}
+                  </strong>
+                  <pre
+                    style={{
+                      margin: 0,
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      maxHeight: 260,
+                      // Long identifiers must not stretch the page sideways;
+                      // the phone layout has no horizontal scroll anywhere else.
+                      overflow: 'auto',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {discovery.error ?? JSON.stringify(discovery.result, null, 2)}
+                  </pre>
+                  <button
+                    className="btn"
+                    style={{ alignSelf: 'flex-start', padding: '6px 10px', minHeight: 'var(--tap-target)' }}
+                    onClick={() => setDiscovery(null)}
+                  >
+                    Hide
+                  </button>
+                </div>
+              )}
             </div>
           )
         })}
