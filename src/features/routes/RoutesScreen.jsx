@@ -16,7 +16,7 @@ import { avgSpeed } from '../../data/metrics.js'
 import { parseGpx } from '../../data/gpx.js'
 import { fireConfetti } from '../../components/confetti.js'
 import { formatShortDate, formatDuration, recordDate } from '../../data/dates.js'
-import { SURFACES, DIFFICULTIES } from '../../settings.js'
+import { SURFACES, DIFFICULTIES, SEED_ROUTES } from '../../settings.js'
 import { EmptyState } from '../../components/ui.jsx'
 import SegmentsCard from './SegmentsCard.jsx'
 import RouteMap from '../rides/RouteMap.jsx'
@@ -53,6 +53,25 @@ export default function RoutesScreen({
 
   const toggleCues = (id) => {
     setExpandedCues((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  async function handleSeedBenchmarkRoutes() {
+    const existingNames = new Set(routes.map((r) => r.name.toLowerCase()))
+    let added = 0
+    for (const r of SEED_ROUTES) {
+      if (!existingNames.has(r.name.toLowerCase())) {
+        await saveRow(TABLES.routes, r)
+        added++
+      }
+    }
+    setPending(queueLength())
+    fireConfetti({ particleCount: 60 })
+    showToast(
+      added > 0
+        ? `Loaded ${added} Grand Blvd benchmark routes!`
+        : 'All Grand Blvd benchmark routes are already in your library!',
+    )
+    refresh()
   }
 
   function handleGpxFile(event) {
@@ -183,14 +202,27 @@ ${trkpts}
     <div className="screen">
       <div className="screen-header">
         <h2>Routes & Navigation</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
+            type="button"
+            className="btn"
+            onClick={handleSeedBenchmarkRoutes}
+            title="Load Grand Blvd benchmark routes"
+            style={{ fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Compass size={16} aria-hidden="true" />
+            Seed Routes
+          </button>
+          <button
+            type="button"
             className="btn"
             onClick={() => fileInputRef.current?.click()}
             aria-label="Import a GPX route file"
             title="Import GPX Route"
+            style={{ fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            <Upload size={18} aria-hidden="true" />
+            <Upload size={16} aria-hidden="true" />
+            Import GPX
           </button>
           <input
             ref={fileInputRef}
@@ -200,13 +232,15 @@ ${trkpts}
             style={{ display: 'none' }}
           />
           <button
+            type="button"
             className="btn btn-primary"
             onClick={() => {
               setFormInitial(null)
               setShowForm((v) => !v)
             }}
+            style={{ fontSize: 'var(--text-xs)' }}
           >
-            <Plus size={18} aria-hidden="true" /> {showForm ? 'Close' : 'Add'}
+            <Plus size={16} aria-hidden="true" /> {showForm ? 'Close' : 'Add'}
           </button>
         </div>
       </div>

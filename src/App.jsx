@@ -63,41 +63,31 @@ export default function App() {
   }, [])
 
   const refresh = useCallback(async () => {
-    const [r, b, j, rt] = await Promise.all([
+    const [rd, bc, jn, rt] = await Promise.all([
       loadTable(TABLES.rides),
       loadTable(TABLES.bodyComp),
       loadTable(TABLES.journal),
       loadTable(TABLES.routes),
     ])
-    setRides(r.rows)
-    setBodyComp(b.rows)
-    setJournal(j.rows)
 
-    // First run on a new account: seed the Bentonville route library so the
-    // ride form has something to pick from immediately.
-    //
-    // The localStorage marker is what makes this once-only. Keyed on "an empty
-    // table" alone, deleting every route — a perfectly reasonable thing to do
-    // if you ride somewhere else — would silently resurrect all six on the next
-    // load, with no way to be rid of them.
-    const alreadySeeded = (() => {
-      try {
-        return localStorage.getItem(ROUTES_SEEDED_KEY) === '1'
-      } catch {
-        return false
-      }
-    })()
+    setRides(rd.rows)
+    setBodyComp(bc.rows)
+    setJournal(jn.rows)
 
-    if (rt.rows.length === 0 && !rt.fromCache && !alreadySeeded) {
-      const seeded = []
-      for (const route of SEED_ROUTES) {
+    const existingNames = new Set(rt.rows.map((r) => r.name.toLowerCase()))
+    const missingSeeds = SEED_ROUTES.filter((r) => !existingNames.has(r.name.toLowerCase()))
+
+    // Seed missing starter routes so the user immediately has the door-to-trail routes
+    if (missingSeeds.length > 0 && !rt.fromCache) {
+      const seeded = [...rt.rows]
+      for (const route of missingSeeds) {
         const { row } = await saveRow(TABLES.routes, route)
         seeded.push(row)
       }
       try {
-        localStorage.setItem(ROUTES_SEEDED_KEY, '1')
+        localStorage.setItem(ROUTES_SEEDED_KEY, '3')
       } catch {
-        /* private mode — worst case the library seeds again next launch */
+        /* private mode */
       }
       setRoutes(seeded)
     } else {
