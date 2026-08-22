@@ -129,15 +129,28 @@ export default function RecordRide({ onFinish, onCancel }) {
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
-        const { latitude, longitude, accuracy: acc } = position.coords
+        const { latitude, longitude, accuracy: acc, altitude, altitudeAccuracy } = position.coords
         setAccuracy(acc)
 
         // Drop garbage fixes. Early points from a cold GPS can be hundreds of
         // metres off and would add phantom miles to the distance.
         if (acc != null && acc > 50) return
 
+        // Altitude is null on most phones without a barometer, and wildly
+        // imprecise on some that report it. Keep it only when the device
+        // vouches for it, since a noisy altitude inflates climb totals far
+        // more than it informs — and null here is honest, where a guess is not.
+        const elevationM =
+          typeof altitude === 'number' &&
+          Number.isFinite(altitude) &&
+          (altitudeAccuracy == null || altitudeAccuracy <= 15)
+            ? altitude
+            : null
+
         setTrack((prev) => {
-          const next = [...prev, [latitude, longitude, position.timestamp]]
+          // Heart rate is null: browsers cannot read a chest strap or watch.
+          // It arrives via GPX import instead.
+          const next = [...prev, [latitude, longitude, position.timestamp, elevationM, null]]
           persistDraft(next, accumulatedRef.current + (Date.now() - (startedAtRef.current ?? Date.now())))
           return next
         })

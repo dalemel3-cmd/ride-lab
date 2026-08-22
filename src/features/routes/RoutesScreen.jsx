@@ -22,7 +22,7 @@ const DIFFICULTY_COLORS = {
   'double-black': 'var(--status-error)',
 }
 
-export default function RoutesScreen({ routes, rides, refresh, showToast, setPending }) {
+export default function RoutesScreen({ routes, rides, settings, refresh, showToast, setPending }) {
   const [showForm, setShowForm] = useState(false)
 
   // Match rides to routes by name — the ride form writes a free-text
@@ -67,7 +67,7 @@ export default function RoutesScreen({ routes, rides, refresh, showToast, setPen
 
       {/* GPS-matched repeat efforts. Sits above the library because it needs no
           upkeep — segments appear on their own as tracked rides accumulate. */}
-      <SegmentsCard rides={rides} />
+      <SegmentsCard rides={rides} maxHr={settings?.maxHr} />
 
       {routes.length === 0 && !showForm && (
         <EmptyState>No routes yet. Add the trails you ride most.</EmptyState>

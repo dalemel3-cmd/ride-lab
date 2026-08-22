@@ -46,6 +46,15 @@ finite. A naive `Number.isFinite` guard turns a blank field into a real zero and
 poisons every average. Coerce absent values to `null` and let the metric return
 `null` too. A ride with no heart rate is not a ride at 0 bpm.
 
+**Track points come in two widths.** A point is
+`[lat, lon, epochMs, elevationM, heartRate]`, but it used to be just the first
+three, and rides recorded before the widening still sit in the same `jsonb`
+column — which is why that change needed no migration. `point[3]` on an older
+ride is `undefined`, and `undefined` becomes `NaN` the moment it reaches
+arithmetic. Always read through the accessors in `src/data/track.js`; never
+index a track directly. Elevation is stored in **metres** (GPX's native unit)
+and converted to feet only for display.
+
 **A neutral starting value is not a result.** `dailyReadiness` begins at 75 as an
 anchor for real signals to move. It counts how many actually contributed and
 returns `null` when that is zero — otherwise an empty account scored a fixed 77
@@ -104,9 +113,13 @@ These are product decisions, not preferences. Please don't "improve" them.
   Comparing across surfaces measures the trail, not the rider. GPS segments
   (`src/data/segments.js`) are the strongest version of this: same ground, so
   terrain is eliminated rather than merely grouped.
-- **Segment heart rate is the ride's, not the segment's.** GPX heart-rate
-  samples are parsed but not stored on the track, so a per-segment average
-  would be fabricated. The UI says so explicitly; don't quietly relabel it.
+- **Segment heart rate is measured, then labelled.** Tracks with per-point heart
+  rate give the segment its own average. Older tracks fall back to the ride-wide
+  average, and both the table and the trend line say which is which
+  (`hrChangeSource`). Never blend the two or drop the label — a whole-ride
+  average compared across two different-length rides is a much weaker claim.
+- **VAM only on real climbs.** Shown above 3% average gradient. On rolling
+  ground it measures the terrain and the wind, not the rider.
 
 ## Integrations
 
@@ -131,10 +144,10 @@ data type at all. Both were assumptions that a probe disproved in seconds.
 ```
 src/
   data/        store.js (offline queue), metrics.js (pure), dates.js, gpx.js,
-               segments.js (GPS segment matching, pure)
+               segments.js (GPS segment matching), track.js (point accessors)
   features/    rides, body, journal, routes, progress, settings
   settings.js  every tunable value, with bounds
 db/            SQL migrations, applied in order
 supabase/functions/   Edge Functions — deployed separately from the front end
-tests/         metrics + segments (node), ui/queue/gpx (playwright)
+tests/         metrics + track + segments (node), ui/queue/gpx (playwright)
 ```

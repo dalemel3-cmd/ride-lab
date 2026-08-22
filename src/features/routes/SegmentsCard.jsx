@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react'
 import { Repeat, Trophy, ChevronDown, ChevronUp } from 'lucide-react'
 import { findSegments, MIN_SEGMENT_MI } from '../../data/segments.js'
 import { formatShortDate } from '../../data/dates.js'
+import { METERS_TO_FEET } from '../../data/track.js'
 import { ScienceNote, EmptyState } from '../../components/ui.jsx'
 import RouteMap from '../rides/RouteMap.jsx'
+import ElevationProfile from '../rides/ElevationProfile.jsx'
 
 /**
  * Stretches of ground ridden more than once, matched by GPS.
@@ -13,7 +15,7 @@ import RouteMap from '../rides/RouteMap.jsx'
  * eliminated, because every effort listed covers the same dirt. A faster time
  * or a lower heart rate on a segment is a change in the rider and nothing else.
  */
-export default function SegmentsCard({ rides }) {
+export default function SegmentsCard({ rides, maxHr }) {
   const [expanded, setExpanded] = useState(null)
 
   // Matching is O(rides²) over resampled tracks, so it must not run on every
@@ -21,6 +23,7 @@ export default function SegmentsCard({ rides }) {
   const segments = useMemo(() => findSegments(rides), [rides])
 
   const tracked = rides.filter((r) => Array.isArray(r.track) && r.track.length >= 2).length
+  const anyClimb = segments.some((s) => (s.gradePercent ?? 0) >= 3)
 
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -40,6 +43,10 @@ export default function SegmentsCard({ rides }) {
           {segments.map((segment) => {
             const isOpen = expanded === segment.id
             const improving = segment.timeChangeMin !== null && segment.timeChangeMin < 0
+            // VAM only means something on ground that actually climbs. Below
+            // about 3% it measures rolling terrain and a tailwind more than it
+            // measures the rider.
+            const isClimb = (segment.gradePercent ?? 0) >= 3 && segment.efforts.some((e) => e.vam != null)
 
             return (
               <div
@@ -75,6 +82,9 @@ export default function SegmentsCard({ rides }) {
                   <span style={{ minWidth: 0 }}>
                     <span style={{ display: 'block', fontWeight: 600 }}>
                       {segment.distanceMi} mi · {segment.efforts.length} efforts
+                      {segment.elevationGainM !== null && segment.elevationGainM > 0 && (
+                        <> · {Math.round(segment.elevationGainM * METERS_TO_FEET)} ft</>
+                      )}
                     </span>
                     <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
                       {segment.efforts[0]?.routeName ?? 'Unnamed stretch'}
@@ -98,7 +108,11 @@ export default function SegmentsCard({ rides }) {
                       ? `${Math.abs(segment.timeChangeMin)} min faster than your first effort`
                       : `${segment.timeChangeMin} min vs your first effort`}
                     {segment.hrChange !== null && segment.hrChange < 0 && (
-                      <> · {Math.abs(segment.hrChange)} bpm lower average heart rate</>
+                      <>
+                        {' '}
+                        · {Math.abs(segment.hrChange)} bpm lower{' '}
+                        {segment.hrChangeSource === 'segment' ? 'on this segment' : 'ride-average heart rate'}
+                      </>
                     )}
                   </div>
                 )}
@@ -106,13 +120,15 @@ export default function SegmentsCard({ rides }) {
                 {isOpen && (
                   <>
                     <RouteMap track={segment.geometry} height={140} />
+                    <ElevationProfile points={segment.geometry} maxHr={maxHr} />
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
                       <thead>
                         <tr className="muted" style={{ fontSize: 'var(--text-xs)', textAlign: 'left' }}>
                           <th style={{ padding: '4px 0' }}>Date</th>
                           <th style={{ padding: '4px 0' }}>Time</th>
                           <th style={{ padding: '4px 0' }}>Speed</th>
-                          <th style={{ padding: '4px 0' }}>Ride HR</th>
+                          <th style={{ padding: '4px 0' }}>HR</th>
+                          {isClimb && <th style={{ padding: '4px 0' }}>VAM</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -136,9 +152,26 @@ export default function SegmentsCard({ rides }) {
                             <td style={{ padding: '6px 0' }}>
                               {effort.speedMph != null ? `${effort.speedMph} mph` : '—'}
                             </td>
+                            {/* A segment average when the track carries heart
+                                rate; otherwise the ride's, marked with an
+                                asterisk rather than passed off as the
+                                segment's. */}
                             <td style={{ padding: '6px 0' }}>
-                              {effort.avgHr != null ? `${effort.avgHr} bpm` : '—'}
+                              {effort.avgHr != null ? (
+                                `${effort.avgHr} bpm`
+                              ) : effort.rideAvgHr != null ? (
+                                <span className="muted" title="Whole-ride average — this ride has no per-point heart rate">
+                                  {effort.rideAvgHr} bpm*
+                                </span>
+                              ) : (
+                                '—'
+                              )}
                             </td>
+                            {isClimb && (
+                              <td style={{ padding: '6px 0' }}>
+                                {effort.vam != null ? `${effort.vam} m/h` : '—'}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
@@ -157,10 +190,22 @@ export default function SegmentsCard({ rides }) {
             quoting at the end of the sixteen weeks.
             <br />
             <br />
-            One caveat kept deliberately visible: the heart rate shown is the{' '}
-            <strong>whole ride's</strong> average, not the segment's. GPX heart-rate samples are
-            not stored alongside the track, so a per-segment figure would be invented. Treat it as
-            context for the effort, not a measurement of it.
+            Heart rate here is the segment's own average, taken from the points inside it. A
+            figure marked with an asterisk is the whole ride's average instead — that ride was
+            recorded before per-point heart rate was stored, or came from a file without it. The
+            two are not interchangeable, which is why they are marked differently rather than
+            blended.
+            {anyClimb && (
+              <>
+                <br />
+                <br />
+                <strong>VAM</strong> is metres climbed per hour, shown only on segments steeper
+                than 3%. On a sustained climb almost all your work goes into lifting rider and
+                bike against gravity, so unlike speed it cannot be flattered by a tailwind or a
+                fast descent. It rises with aerobic fitness and falls with weight — the two things
+                this study is tracking. Recreational riders sit around 500–900 m/h.
+              </>
+            )}
           </ScienceNote>
         </>
       )}

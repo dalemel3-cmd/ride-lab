@@ -85,13 +85,20 @@ export function parseGpx(xmlText) {
       lastTime = time
     }
 
-    track.push([lat, lon, time ?? 0])
-
-    const ele = Number(point.getElementsByTagName('ele')[0]?.textContent)
-    if (Number.isFinite(ele)) elevations.push(ele)
+    const eleRaw = point.getElementsByTagName('ele')[0]?.textContent
+    const eleNum = eleRaw === undefined || eleRaw === '' ? NaN : Number(eleRaw)
+    const ele = Number.isFinite(eleNum) ? eleNum : null
+    if (ele !== null) elevations.push(ele)
 
     const hr = heartRateFrom(point)
     if (hr !== null) heartRates.push(hr)
+
+    // Elevation (metres) and heart rate ride along on each point, which is what
+    // makes per-segment heart rate and climb profiles possible at all. Storing
+    // only the ride-wide averages, as this did originally, meant any stretch
+    // shorter than a whole ride could never be measured — only estimated from
+    // figures that describe something else.
+    track.push([lat, lon, time ?? 0, ele, hr])
   }
 
   if (track.length < 2) return null

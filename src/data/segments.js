@@ -20,8 +20,17 @@
  * matching can be checked against hand-built tracks in tests/segments.js.
  */
 
-import { haversineMiles } from './metrics.js'
+import { haversineMiles, vam, gradePercent } from './metrics.js'
 import { recordDate } from './dates.js'
+import {
+  latOf,
+  lonOf,
+  timeOf,
+  elevationOf,
+  heartRateOf,
+  elevationGainMeters,
+  averageHeartRate,
+} from './track.js'
 
 /**
  * How far apart two points can be and still count as "the same place".
@@ -67,18 +76,22 @@ const CELL_MI = MATCH_TOLERANCE_MI * 3
 export function resampleTrack(track, spacingMi = RESAMPLE_SPACING_MI) {
   if (!Array.isArray(track) || track.length < 2) return []
 
-  const clean = track.filter(
-    (p) => Array.isArray(p) && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1])),
-  )
+  const clean = track.filter((p) => latOf(p) !== null && lonOf(p) !== null)
   if (clean.length < 2) return []
 
-  const timeOf = (p) => {
-    const t = Number(p[2])
-    // gpx.js writes 0 for a point that carried no timestamp.
-    return Number.isFinite(t) && t > 0 ? t : null
-  }
+  /**
+   * Interpolate a channel that may be absent at either end.
+   *
+   * Elevation and heart rate are missing entirely on rides recorded before they
+   * were stored, and heart rate drops out mid-ride whenever a strap loses
+   * contact. Interpolating from a present value to an absent one would invent
+   * a reading, so a gap stays a gap.
+   */
+  const between = (a, b, f) => (a === null || b === null ? a ?? b ?? null : a + (b - a) * f)
 
-  const out = [[Number(clean[0][0]), Number(clean[0][1]), timeOf(clean[0])]]
+  const pointFrom = (p) => [latOf(p), lonOf(p), timeOf(p), elevationOf(p), heartRateOf(p)]
+
+  const out = [pointFrom(clean[0])]
   let carry = 0
 
   for (let i = 1; i < clean.length; i += 1) {
@@ -89,6 +102,10 @@ export function resampleTrack(track, spacingMi = RESAMPLE_SPACING_MI) {
 
     const tPrev = timeOf(prev)
     const tCur = timeOf(cur)
+    const ePrev = elevationOf(prev)
+    const eCur = elevationOf(cur)
+    const hPrev = heartRateOf(prev)
+    const hCur = heartRateOf(cur)
     let travelled = carry
 
     // Drop a point every `spacingMi` along this leg, interpolating position and
@@ -98,16 +115,19 @@ export function resampleTrack(track, spacingMi = RESAMPLE_SPACING_MI) {
       travelled += spacingMi
       const f = travelled / legMi
       out.push([
-        Number(prev[0]) + (Number(cur[0]) - Number(prev[0])) * f,
-        Number(prev[1]) + (Number(cur[1]) - Number(prev[1])) * f,
+        latOf(prev) + (latOf(cur) - latOf(prev)) * f,
+        lonOf(prev) + (lonOf(cur) - lonOf(prev)) * f,
         tPrev !== null && tCur !== null ? tPrev + (tCur - tPrev) * f : null,
+        between(ePrev, eCur, f),
+        // Heart rate lags effort and is noisy point to point; rounding keeps
+        // an interpolated value from implying sub-beat precision.
+        hPrev !== null && hCur !== null ? Math.round(hPrev + (hCur - hPrev) * f) : (hPrev ?? hCur),
       ])
     }
     carry = travelled - legMi
   }
 
-  const last = clean[clean.length - 1]
-  out.push([Number(last[0]), Number(last[1]), timeOf(last)])
+  out.push(pointFrom(clean[clean.length - 1]))
   return out
 }
 
@@ -293,16 +313,25 @@ export function findSegments(rides = [], { minEfforts = 2 } = {}) {
         target.seen.add(rideId)
 
         const minutes = elapsedMinutes(source.points, from, to)
+        const slice = source.points.slice(Math.min(from, to), Math.max(from, to) + 1)
+
+        // The segment's own heart rate, averaged over just these points. Older
+        // rides have no per-point heart rate, so this is null for them and the
+        // ride-wide average is offered as clearly-labelled context instead —
+        // never silently substituted, which would make two efforts look
+        // comparable when one is measuring the whole ride.
+        const segmentHr = averageHeartRate(slice)
+        const climbM = elevationGainMeters(slice)
+
         target.efforts.push({
           rideId,
           date: recordDate(source.ride),
           routeName: source.ride.route_name ?? null,
           durationMin: minutes,
-          // Average HR is the ride's, not the segment's: GPX heart rate is not
-          // carried on the stored track. It is a fair comparison between two
-          // efforts on the same ground, but it is a ride-level figure and the
-          // UI labels it as one rather than implying per-segment precision.
-          avgHr: toFiniteOrNull(source.ride.avg_hr),
+          avgHr: segmentHr,
+          rideAvgHr: toFiniteOrNull(source.ride.avg_hr),
+          elevationGainM: climbM === null ? null : Math.round(climbM),
+          vam: vam(climbM, minutes),
           speedMph: minutes ? Math.round((target.distanceMi / (minutes / 60)) * 10) / 10 : null,
         })
       }
@@ -352,20 +381,43 @@ function finalizeSegment(segment) {
   const first = timed[0] ?? null
   const latest = timed.length > 1 ? timed[timed.length - 1] : null
 
-  const withHr = efforts.filter((e) => e.avgHr !== null)
+  // Prefer the segment's own heart rate. Fall back to the ride-wide average so
+  // rides recorded before per-point heart rate existed still show a trend —
+  // but record which was used, because a whole-ride average compared across two
+  // different-length rides is a much weaker claim, and the UI has to say so
+  // rather than presenting both as the same measurement.
+  const segmentHrEfforts = efforts.filter((e) => e.avgHr !== null)
+  const useSegmentHr = segmentHrEfforts.length > 1
+  const withHr = useSegmentHr ? segmentHrEfforts : efforts.filter((e) => e.rideAvgHr !== null)
+  const hrValue = (e) => (useSegmentHr ? e.avgHr : e.rideAvgHr)
+
   const firstHr = withHr[0] ?? null
   const latestHr = withHr.length > 1 ? withHr[withHr.length - 1] : null
+
+  const withVam = efforts.filter((e) => e.vam !== null)
+  const bestVam = withVam.reduce((best, e) => (best === null || e.vam > best.vam ? e : best), null)
+
+  // The segment's own climb, taken from whichever effort measured it. Elevation
+  // is a property of the ground, not of the day, so it does not belong on the
+  // trend — only the rider's rate up it does.
+  const climbed = efforts.find((e) => e.elevationGainM !== null) ?? null
+  const elevationGainM = climbed?.elevationGainM ?? null
 
   return {
     id: segment.id,
     geometry: segment.geometry,
     distanceMi: segment.distanceMi,
+    elevationGainM,
+    gradePercent: gradePercent(elevationGainM, segment.distanceMi),
     efforts: efforts.map((e) => ({ ...e, isFastest: fastest !== null && e.rideId === fastest.rideId })),
     fastest,
+    bestVam,
     // Null rather than zero whenever there is nothing to compare: a single
     // timed effort is not evidence of a trend in either direction.
     timeChangeMin:
       first && latest ? Math.round((latest.durationMin - first.durationMin) * 100) / 100 : null,
-    hrChange: firstHr && latestHr ? latestHr.avgHr - firstHr.avgHr : null,
+    hrChange: firstHr && latestHr ? hrValue(latestHr) - hrValue(firstHr) : null,
+    /** 'segment' when measured over this ground, 'ride' when it is the whole-ride average. */
+    hrChangeSource: firstHr && latestHr ? (useSegmentHr ? 'segment' : 'ride') : null,
   }
 }

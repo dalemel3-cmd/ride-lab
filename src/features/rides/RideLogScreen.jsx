@@ -7,6 +7,7 @@ import { StatGrid, StatTile, EmptyState } from '../../components/ui.jsx'
 import RideForm from './RideForm.jsx'
 import RecordRide from './RecordRide.jsx'
 import RouteMap from './RouteMap.jsx'
+import ElevationProfile from './ElevationProfile.jsx'
 import { parseGpx } from '../../data/gpx.js'
 
 /**
@@ -287,6 +288,9 @@ function RideCard({ ride, settings, onEdit, onDelete }) {
       </div>
 
       {ride.track && <RouteMap track={ride.track} height={120} />}
+      {/* Renders itself away on rides with no elevation, so older tracks and
+          hand-entered rides are unaffected. */}
+      {ride.track && <ElevationProfile points={ride.track} maxHr={settings?.maxHr} height={100} />}
 
       <div
         style={{

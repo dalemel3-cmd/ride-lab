@@ -147,6 +147,9 @@ check('efforts are oldest first', segments[0].efforts.map((e) => e.rideId), ['r1
 check('the faster later effort is the PR', segments[0].fastest.rideId, 'r2')
 check('getting faster shows as a negative change', segments[0].timeChangeMin < 0, true)
 check('the heart-rate drop is reported', segments[0].hrChange, -8) // 152 − 160
+// These tracks predate per-point heart rate, so the trend falls back to the
+// ride average — and says so, rather than passing it off as the segment's.
+check('and is labelled as a whole-ride figure', segments[0].hrChangeSource, 'ride')
 check('segment distance is the shared ground, not the ride', Math.abs(segments[0].distanceMi - 2) < 0.05, true)
 
 console.log('\nA single ride proves nothing')
@@ -173,6 +176,70 @@ check('the segment is still found', untimedSegments.length, 1)
 check('but no duration is invented', untimedSegments[0].efforts[0].durationMin, null)
 check('and there is no PR to claim', untimedSegments[0].fastest, null)
 check('nor a trend', untimedSegments[0].timeChangeMin, null)
+
+console.log('\nPer-point elevation and heart rate')
+/** A climbing track: gains `climbM` metres evenly, at a steady heart rate. */
+function climbTrack({ miles = 1, climbM, hr, mph, startMs = 0 }) {
+  const pts = []
+  const steps = Math.round(miles / 0.02)
+  for (let i = 0; i <= steps; i += 1) {
+    const mi = i * 0.02
+    pts.push([
+      LAT0 + mi / MI_PER_DEG_LAT,
+      LON0,
+      startMs + (mi / mph) * 3600_000,
+      100 + (climbM * i) / steps,
+      hr,
+    ])
+  }
+  return pts
+}
+
+const climbRides = [
+  { id: 'c1', ridden_at: '2026-05-01T14:00:00Z', avg_hr: 999, track: climbTrack({ climbM: 100, hr: 168, mph: 6, startMs: Date.UTC(2026, 4, 1, 14) }) },
+  { id: 'c2', ridden_at: '2026-07-01T14:00:00Z', avg_hr: 999, track: climbTrack({ climbM: 100, hr: 152, mph: 8, startMs: Date.UTC(2026, 6, 1, 14) }) },
+]
+const climbSegs = findSegments(climbRides)
+check('the climb is found as a segment', climbSegs.length, 1)
+// The whole point of storing per-point heart rate: this must be the segment's
+// own average (168 / 152), never the bogus ride-wide 999 used as a tell.
+check('heart rate is the segment\'s own', climbSegs[0].efforts.map((e) => e.avgHr), [168, 152])
+check('the ride average is kept separately as context', climbSegs[0].efforts[0].rideAvgHr, 999)
+check('segment climb is measured', Math.abs(climbSegs[0].elevationGainM - 100) <= 2, true)
+// 1 mile at 6 mph = 10 min for 100 m → 600 m/h. At 8 mph = 7.5 min → 800 m/h.
+// The matched stretch is fractionally shorter than the full mile, so allow a
+// couple of percent rather than pinning the figure exactly.
+const vams = climbSegs[0].efforts.map((e) => e.vam)
+check('VAM is computed per effort', [Math.abs(vams[0] - 600) < 15, Math.abs(vams[1] - 800) < 20], [true, true])
+check('and rises with fitness', vams[1] > vams[0], true)
+check('the best VAM is the later, fitter one', climbSegs[0].bestVam.rideId, 'c2')
+// 100 m over a mile is ~6.2%.
+check('gradient is reported', Math.abs(climbSegs[0].gradePercent - 6.2) < 0.3, true)
+check('the heart-rate drop is the segment\'s', climbSegs[0].hrChange, -16)
+check('and is labelled as measured over the segment', climbSegs[0].hrChangeSource, 'segment')
+
+console.log('\nLegacy tracks still work')
+// Rides recorded before the tuple was widened carry three-element points. They
+// must still match, and must report no invented elevation or segment HR.
+const legacyRides = [
+  { id: 'l1', ridden_at: '2026-05-01T14:00:00Z', avg_hr: 160, track: northTrack({ miles: 2, mph: 9, startMs: Date.UTC(2026, 4, 1, 14) }) },
+  { id: 'l2', ridden_at: '2026-07-01T14:00:00Z', avg_hr: 150, track: northTrack({ miles: 2, mph: 11, startMs: Date.UTC(2026, 6, 1, 14) }) },
+]
+const legacySegs = findSegments(legacyRides)
+check('a legacy segment is still found', legacySegs.length, 1)
+check('no segment heart rate is invented', legacySegs[0].efforts[0].avgHr, null)
+check('the ride average is still offered', legacySegs[0].efforts[0].rideAvgHr, 160)
+check('no elevation is invented', legacySegs[0].elevationGainM, null)
+check('and therefore no VAM', legacySegs[0].efforts[0].vam, null)
+check('nor a gradient', legacySegs[0].gradePercent, null)
+
+console.log('\nA flat modern segment claims no climb')
+const flat = findSegments([
+  { id: 'f1', ridden_at: '2026-05-01T14:00:00Z', track: climbTrack({ climbM: 0, hr: 140, mph: 10, startMs: Date.UTC(2026, 4, 1, 14) }) },
+  { id: 'f2', ridden_at: '2026-06-01T14:00:00Z', track: climbTrack({ climbM: 0, hr: 138, mph: 10, startMs: Date.UTC(2026, 5, 1, 14) }) },
+])
+check('flat ground gains nothing', flat[0].elevationGainM, 0)
+check('and has no VAM to report', flat[0].efforts[0].vam, null)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

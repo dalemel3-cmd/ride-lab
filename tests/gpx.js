@@ -113,6 +113,20 @@ async function main() {
   checkClose('sums only positive elevation change', strava.elevationFt, 65.6, 1)
   check('keeps the start time', strava.startedAt, '2026-08-18T12:00:00.000Z')
 
+  // Per-point elevation and heart rate ride along on the track itself. Without
+  // them, nothing shorter than a whole ride can be measured — no segment heart
+  // rate, no climb profile, no VAM.
+  check('track points carry five values', strava.track[0].length, 5)
+  check('elevation is stored per point, in metres', strava.track[0][3], 380)
+  check('heart rate is stored per point', strava.track[0][4], 120)
+  check('the last point keeps its own values', strava.track[2][4], 180)
+
+  console.log('\nA bare export with no extras (per-point)')
+  const bare = (await run(MINIMAL_GPX)).value
+  check('points are still five wide', bare.track[0].length, 5)
+  check('absent elevation is null, not zero', bare.track[0][3], null)
+  check('absent heart rate is null, not zero', bare.track[0][4], null)
+
   console.log('\nA bare export with no extras')
   const minimal = (await run(MINIMAL_GPX)).value
   check('still computes distance', minimal.distanceMi > 0, true)

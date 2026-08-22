@@ -241,6 +241,40 @@ export function beatsPerMile(avgHrValue, durationMin, distanceMi) {
   return Math.round((hr * t) / d)
 }
 
+/**
+ * VAM — velocità ascensionale media, metres climbed per hour.
+ *
+ * The standard climbing benchmark in cycling, and a good one for this study
+ * because it is almost pure aerobic power-to-weight: on a sustained climb,
+ * nearly all the work goes into lifting rider plus bike against gravity, so
+ * neither a fast descent nor a tailwind can flatter it. Recreational riders sit
+ * around 500–900 m/h on a steady climb; it rises with fitness and falls with
+ * weight, which is exactly the pair of things this study is tracking.
+ *
+ * Only meaningful over ground that actually climbs, so callers should not show
+ * it for a flat segment.
+ */
+export function vam(elevationGainM, durationMin) {
+  const gain = toNumber(elevationGainM)
+  const t = toNumber(durationMin)
+  if (gain === null || t === null || gain <= 0 || t <= 0) return null
+  return Math.round(gain / (t / 60))
+}
+
+/**
+ * Average gradient across a stretch, as a percentage.
+ *
+ * Climb divided by horizontal distance. Used to decide whether a segment is a
+ * climb worth quoting VAM for.
+ */
+export function gradePercent(elevationGainM, distanceMi) {
+  const gain = toNumber(elevationGainM)
+  const d = toNumber(distanceMi)
+  if (gain === null || d === null || d <= 0) return null
+  const distanceM = d * 1609.344
+  return Math.round((gain / distanceM) * 1000) / 10
+}
+
 /** Efficiency factor: speed per unit of heart rate. Rising = getting fitter. */
 export function efficiencyFactor(distanceMi, durationMin, avgHrValue) {
   const speed = avgSpeed(distanceMi, durationMin)
