@@ -1,11 +1,22 @@
 import { useMemo, useState } from 'react'
-import { Plus, Trash2, Mountain } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Mountain,
+  Navigation,
+  Compass,
+  Download,
+  Play,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { avgSpeed } from '../../data/metrics.js'
 import { formatShortDate, formatDuration, recordDate } from '../../data/dates.js'
 import { SURFACES, DIFFICULTIES } from '../../settings.js'
 import { EmptyState } from '../../components/ui.jsx'
 import SegmentsCard from './SegmentsCard.jsx'
+import RouteMap from '../rides/RouteMap.jsx'
 
 /**
  * The route library, plus what riding each one has actually looked like.
@@ -22,8 +33,21 @@ const DIFFICULTY_COLORS = {
   'double-black': 'var(--status-error)',
 }
 
-export default function RoutesScreen({ routes, rides, settings, refresh, showToast, setPending }) {
+export default function RoutesScreen({
+  routes,
+  rides,
+  settings,
+  refresh,
+  showToast,
+  setPending,
+  onNavigate,
+}) {
   const [showForm, setShowForm] = useState(false)
+  const [expandedCues, setExpandedCues] = useState({})
+
+  const toggleCues = (id) => {
+    setExpandedCues((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
 
   // Match rides to routes by name — the ride form writes a free-text
   // `route_name`, so a route can be typed in without existing in the library.
@@ -54,10 +78,49 @@ export default function RoutesScreen({ routes, rides, settings, refresh, showToa
     refresh()
   }
 
+  function handleDownloadGpx(route) {
+    const points = Array.isArray(route.track) ? route.track : []
+    if (points.length === 0) {
+      showToast('No GPS track available for this route', 'error')
+      return
+    }
+    const trkpts = points
+      .map(
+        ([lat, lon, ele]) =>
+          `      <trkpt lat="${lat}" lon="${lon}">${ele != null ? `<ele>${ele}</ele>` : ''}</trkpt>`,
+      )
+      .join('\n')
+
+    const gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Ride Lab" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>${route.name}</name>
+    <desc>${route.notes || ''}</desc>
+  </metadata>
+  <trk>
+    <name>${route.name}</name>
+    <trkseg>
+${trkpts}
+    </trkseg>
+  </trk>
+</gpx>`
+
+    const blob = new Blob([gpxContent], { type: 'application/gpx+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${route.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.gpx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    showToast('GPX route downloaded')
+  }
+
   return (
     <div className="screen">
       <div className="screen-header">
-        <h2>Routes</h2>
+        <h2>Routes & Navigation</h2>
         <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
           <Plus size={18} aria-hidden="true" /> {showForm ? 'Close' : 'Add'}
         </button>
@@ -76,15 +139,30 @@ export default function RoutesScreen({ routes, rides, settings, refresh, showToa
       {routes.map((route) => {
         const routeRides = statsByRoute.get(route.name.toLowerCase()) ?? []
         // Oldest first, so "first vs. best" reads as progress.
-        const chronological = [...routeRides].sort((a, b) => a.ridden_at.localeCompare(b.ridden_at))
+        const chronological = [...routeRides].sort((a, b) =>
+          a.ridden_at.localeCompare(b.ridden_at),
+        )
         const fastest = routeRides.reduce((best, r) => {
           const speed = avgSpeed(r.distance_mi, r.duration_min)
           if (speed == null) return best
           return best == null || speed > best.speed ? { speed, ride: r } : best
         }, null)
 
+        const originAddr = settings?.homeBase || '1105 SW Grand Blvd, Bentonville, AR'
+        const destAddr = route.destination || `${route.name}, Bentonville, AR`
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+          originAddr,
+        )}&destination=${encodeURIComponent(destAddr)}&travelmode=bicycling`
+
+        const cues = Array.isArray(route.cues) ? route.cues : null
+        const isCuesOpen = !!expandedCues[route.id]
+
         return (
-          <article key={route.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <article
+            key={route.id}
+            className="card"
+            style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+          >
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-lg)' }}>
@@ -94,7 +172,7 @@ export default function RoutesScreen({ routes, rides, settings, refresh, showToa
                   {[
                     route.area,
                     route.distance_mi != null && `${route.distance_mi} mi`,
-                    route.elevation_ft != null && `${route.elevation_ft} ft`,
+                    route.elevation_ft != null && `${route.elevation_ft} ft climb`,
                     route.surface?.replace('-', ' '),
                   ]
                     .filter(Boolean)
@@ -127,12 +205,150 @@ export default function RoutesScreen({ routes, rides, settings, refresh, showToa
               </button>
             </div>
 
+            {/* Route Map Preview */}
+            {Array.isArray(route.track) && route.track.length > 1 && (
+              <RouteMap track={route.track} height={120} />
+            )}
+
             {route.notes && (
-              <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>
+              <p className="muted" style={{ margin: 0, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
                 {route.notes}
               </p>
             )}
 
+            {/* Turn-by-Turn Navigation Cue Sheet (Expandable) */}
+            {cues && cues.length > 0 && (
+              <div
+                style={{
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--color-border)',
+                  overflow: 'hidden',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleCues(route.id)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-text)',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Compass size={14} color="var(--color-accent)" />
+                    Turn-by-Turn Cue Sheet ({cues.length} steps)
+                  </span>
+                  {isCuesOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+
+                {isCuesOpen && (
+                  <div
+                    style={{
+                      padding: '8px 12px 12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                      borderTop: '1px solid var(--color-border)',
+                      fontSize: 'var(--text-xs)',
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {cues.map((cue, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <span
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: '50%',
+                            background: 'var(--color-surface-raised)',
+                            color: 'var(--color-accent)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {idx + 1}
+                        </span>
+                        <span className="muted">{cue}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ACTION BUTTONS: Google Maps Navigation + GPX Export + Record */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary"
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 'var(--text-xs)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  textDecoration: 'none',
+                }}
+              >
+                <Navigation size={14} aria-hidden="true" />
+                Navigate in Google Maps
+              </a>
+
+              {Array.isArray(route.track) && route.track.length > 1 && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => handleDownloadGpx(route)}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: 'var(--text-xs)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                  title="Download GPX file for Garmin / Wahoo"
+                >
+                  <Download size={14} aria-hidden="true" />
+                  GPX
+                </button>
+              )}
+
+              {onNavigate && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => onNavigate('rides')}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: 'var(--text-xs)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                  title="Record a ride for this route"
+                >
+                  <Play size={14} aria-hidden="true" />
+                  Record Ride
+                </button>
+              )}
+            </div>
+
+            {/* Progress / History Stats */}
             {routeRides.length > 0 ? (
               <div
                 style={{
@@ -159,12 +375,21 @@ export default function RoutesScreen({ routes, rides, settings, refresh, showToa
                     <strong style={{ color: 'var(--color-accent)' }}>
                       {fastest.speed.toFixed(1)} mph
                     </strong>
-                    {fastest.ride.duration_min ? ` (${formatDuration(fastest.ride.duration_min)})` : ''}
+                    {fastest.ride.duration_min
+                      ? ` (${formatDuration(fastest.ride.duration_min)})`
+                      : ''}
                   </span>
                 )}
               </div>
             ) : (
-              <span className="muted" style={{ paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
+              <span
+                className="muted"
+                style={{
+                  paddingTop: 6,
+                  borderTop: '1px solid var(--color-border)',
+                  fontSize: 'var(--text-xs)',
+                }}
+              >
                 Not ridden yet.
               </span>
             )}

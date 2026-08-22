@@ -7,6 +7,7 @@ import {
   Plus,
   Bike,
   Gauge,
+  Navigation,
 } from 'lucide-react'
 import {
   dailyReadiness,
@@ -36,6 +37,7 @@ export default function DashboardScreen({
   rides,
   bodyComp,
   settings,
+  routes,
   onNavigate,
 }) {
   // Sort chronological oldest-first
@@ -125,6 +127,36 @@ export default function DashboardScreen({
     () => (recentZones ? polarizedAudit(recentZones) : null),
     [recentZones],
   )
+
+  // 9. Match Suggested Route from library based on today's readiness
+  const suggestedRoute = useMemo(() => {
+    if (!routes || routes.length === 0) return null
+    if (!readiness || readiness.zone === 'amber') {
+      // Zone 2 Base: favor paved-trail, gentle green/blue
+      return (
+        routes.find((r) => r.surface === 'paved-trail') ||
+        routes.find((r) => r.difficulty === 'green') ||
+        routes[0]
+      )
+    }
+    if (readiness.zone === 'green') {
+      // High capacity: favor punchy climbing or singletrack
+      return (
+        routes.find((r) => r.difficulty === 'blue' || r.difficulty === 'black') ||
+        routes.find((r) => (r.elevation_ft ?? 0) > 500) ||
+        routes[0]
+      )
+    }
+    if (readiness.zone === 'red') {
+      // Recovery: shortest, flattest green/paved route
+      return (
+        routes.find((r) => r.difficulty === 'green' && (r.distance_mi ?? 0) <= 15) ||
+        routes.find((r) => r.surface === 'paved-trail') ||
+        routes[0]
+      )
+    }
+    return routes[0]
+  }, [routes, readiness])
 
   // Study Progress
   const studyStart = settings.caseStudyStartDate
@@ -289,6 +321,118 @@ export default function DashboardScreen({
           </p>
         )}
       </div>
+
+      {/* TODAY'S SUGGESTED ROUTE & NAVIGATION CARD */}
+      {suggestedRoute && (
+        <div
+          className="card"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            borderLeft: '4px solid var(--color-accent)',
+            background:
+              'linear-gradient(135deg, rgba(13, 148, 136, 0.08) 0%, rgba(6, 15, 26, 0.6) 100%)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Navigation size={15} color="var(--color-accent)" />
+              <span
+                style={{
+                  color: 'var(--color-text-muted)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Today's Suggested Route
+              </span>
+            </div>
+            {suggestedRoute.difficulty && (
+              <span
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  color: 'var(--color-accent)',
+                }}
+              >
+                {suggestedRoute.difficulty}
+              </span>
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              flexWrap: 'wrap',
+              gap: 6,
+            }}
+          >
+            <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-lg)' }}>
+              {suggestedRoute.name}
+            </strong>
+            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+              {[
+                suggestedRoute.area,
+                suggestedRoute.distance_mi != null && `${suggestedRoute.distance_mi} mi`,
+                suggestedRoute.elevation_ft != null && `${suggestedRoute.elevation_ft} ft climb`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </div>
+
+          {suggestedRoute.notes && (
+            <p className="muted" style={{ margin: 0, fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+              {suggestedRoute.notes}
+            </p>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+                settings?.homeBase || '1105 SW Grand Blvd, Bentonville, AR',
+              )}&destination=${encodeURIComponent(
+                suggestedRoute.destination || `${suggestedRoute.name}, Bentonville, AR`,
+              )}&travelmode=bicycling`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary"
+              style={{
+                padding: '6px 12px',
+                fontSize: 'var(--text-xs)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                textDecoration: 'none',
+              }}
+            >
+              <Navigation size={14} aria-hidden="true" />
+              Navigate in Google Maps
+            </a>
+
+            <button
+              type="button"
+              className="btn"
+              onClick={() => onNavigate('routes')}
+              style={{
+                padding: '6px 12px',
+                fontSize: 'var(--text-xs)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              View Route Library & Cues
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 4 CORE ATHLETE TELEMETRY TILES */}
       <StatGrid min={140}>

@@ -135,15 +135,6 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     [studyZones],
   )
 
-  const pct = (zoneNumbers) =>
-    (studyZones ?? [])
-      .filter((z) => zoneNumbers.includes(z.zone))
-      .reduce((sum, z) => sum + z.percent, 0)
-
-  const easyPercent = pct([1, 2])
-  const moderatePercent = pct([3])
-  const hardPercent = pct([4, 5])
-
   // What the study can measure yet, and what each gap costs. Ordered by value,
   // not by convenience: heart rate outranks a second ride.
   const coverage = useMemo(() => {

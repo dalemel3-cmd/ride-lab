@@ -215,7 +215,7 @@ export default function App() {
             {screen === 'rides' && <RideLogScreen {...shared} />}
             {screen === 'body' && <BodyCompScreen {...shared} />}
             {screen === 'journal' && <JournalScreen {...shared} />}
-            {screen === 'routes' && <RoutesScreen {...shared} />}
+            {screen === 'routes' && <RoutesScreen {...shared} onNavigate={setScreen} />}
             {screen === 'progress' && <ProgressScreen {...shared} />}
             {screen === 'settings' && (
               <SettingsScreen {...shared} onUpdateSettings={handleUpdateSettings} />
