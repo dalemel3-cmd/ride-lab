@@ -168,10 +168,27 @@ These are product decisions, not preferences. Please don't "improve" them.
   Kept in the schema so existing rows stay valid; not offered in the UI.
 
 When mapping a new provider field, **verify the response shape against a live
-account first**. The `probe` and `discover` actions on the `integrations`
-function exist for this. Google documents neither units nor most data type
-identifiers: weight arrives as `weightGrams`, and `resting-heart-rate` is not a
-data type at all. Both were assumptions that a probe disproved in seconds.
+account first** — Settings has a "What syncs?" button that returns raw samples,
+and `probe`/`discover` back it. Google documents neither units nor identifiers,
+and on this API the plausible name and the real one are usually different:
+
+| what you would guess | what it actually is |
+| --- | --- |
+| `kilograms` | `weightGrams` |
+| `resting-heart-rate` | not a data type at all |
+| `daily-heart-rate-variability` | `heart-rate-variability` |
+| `rmssd` / `hrvMilliseconds` | `rootMeanSquareOfSuccessiveDifferencesMilliseconds` |
+
+A wrong identifier or field fails **silently as "no data"**, never as an error,
+so every one of these cost days before anyone noticed. Two further undocumented
+behaviours: results come back **newest-first**, and an upper time bound joined
+with `AND` is not supported. Neither is relied on — the heart-rate pager sends
+only a lower bound, trims in code, and stops when a page adds nothing in range,
+which is correct whichever way the API sorts.
+
+A 403 on a data type means the **scope was never granted**, not that the data is
+missing. `vo2-max`, `steps`, and `active-minutes` all sit behind scopes this app
+does not request.
 
 ## Layout
 
