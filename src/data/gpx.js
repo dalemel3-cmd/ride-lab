@@ -11,6 +11,7 @@
  */
 
 import { haversineMiles } from './metrics.js'
+import { elevationGainMeters } from './track.js'
 
 const METERS_TO_FEET = 3.28084
 
@@ -37,18 +38,14 @@ function heartRateFrom(pointEl) {
 /**
  * Total climb, ignoring GPS noise.
  *
- * Barometric and GPS elevation both jitter by a metre or two at rest. Summing
- * every positive change would accumulate hundreds of phantom feet over a long
- * ride, so small changes are treated as noise rather than climbing.
+ * Delegates to the shared implementation rather than keeping a second copy.
+ * The copy that used to live here rejected any step under a metre, which threw
+ * away entire climbs on files that log elevation every few seconds — see the
+ * note in track.js.
  */
 function elevationGainFeet(elevations) {
-  const NOISE_THRESHOLD_M = 1
-  let gain = 0
-  for (let i = 1; i < elevations.length; i += 1) {
-    const delta = elevations[i] - elevations[i - 1]
-    if (delta > NOISE_THRESHOLD_M) gain += delta
-  }
-  return Math.round(gain * METERS_TO_FEET)
+  const gain = elevationGainMeters(elevations.map((ele) => [0, 0, 0, ele, null]))
+  return gain === null ? null : Math.round(gain * METERS_TO_FEET)
 }
 
 /**

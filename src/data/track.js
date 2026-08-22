@@ -89,23 +89,102 @@ export function hasHeartRate(track) {
 export function elevationGainMeters(points) {
   if (!Array.isArray(points) || points.length < 2) return null
 
-  let gain = 0
-  let previous = null
-  let sawAny = false
-
+  const elevations = []
   for (const point of points) {
     const ele = elevationOf(point)
-    if (ele === null) continue
-    sawAny = true
-    if (previous !== null) {
-      const delta = ele - previous
-      if (delta > ELEVATION_NOISE_M) gain += delta
-    }
-    previous = ele
+    if (ele !== null) elevations.push(ele)
   }
 
   // No elevation data at all is unknown, not a flat ride.
-  return sawAny ? gain : null
+  if (elevations.length === 0) return null
+  if (elevations.length < 3) return 0
+
+  /*
+   * Smooth first, then sum. This ordering is the whole trick, and getting it
+   * wrong silently reports flat.
+   *
+   * The obvious approach — ignore any single step smaller than a metre — works
+   * only when samples are far apart. A phone logging every few seconds splits a
+   * real climb into hundreds of sub-metre steps, every one of which looks like
+   * noise on its own, so the entire climb is discarded. A real 6-mile ride
+   * imported here logged elevation every ~4 seconds: 262 rising samples, the
+   * largest 0.70 m, not one over the threshold, total reported 0 ft against a
+   * true 66 ft.
+   *
+   * Summing every positive step instead is no better in the other direction —
+   * on that same ride it gives 154 ft, because barometric jitter accumulates
+   * relentlessly over 722 samples.
+   *
+   * Averaging over a short window removes the jitter while leaving the trend,
+   * so what is summed afterwards is real climbing at whatever rate it happened.
+   */
+  // Step one: average out high-frequency jitter, but only when the track is
+  // dense enough for a window to mean anything. Smoothing four points destroys
+  // the signal instead of the noise.
+  let series = elevations
+  if (elevations.length >= 30) {
+    const radius = Math.min(10, Math.max(2, Math.round(elevations.length / 60)))
+    series = elevations.map((_, i) => {
+      const from = Math.max(0, i - radius)
+      const to = Math.min(elevations.length - 1, i + radius)
+      let sum = 0
+      for (let j = from; j <= to; j += 1) sum += elevations[j]
+      return sum / (to - from + 1)
+    })
+  }
+
+  /*
+   * Step two: hysteresis. A rise counts once it clears the threshold measured
+   * from the low point it started at — never per adjacent sample.
+   *
+   * That distinction is the fix. Thresholding each step asks "was this instant
+   * a big climb", which a steady gradient never is at a 4-second sample rate,
+   * so a genuine 66 ft was reported as 0. Measuring from the trough asks "has
+   * the rider actually gained height since the bottom", which is the question
+   * that was meant all along.
+   */
+  let gain = 0
+  let trough = series[0]
+  let peak = series[0]
+
+  for (const e of series) {
+    if (e > peak) peak = e
+    if (e < trough) {
+      // A new low: whatever was being tracked was a dip, not a climb.
+      trough = e
+      peak = e
+    }
+    if (peak - trough > ELEVATION_NOISE_M) {
+      gain += peak - trough
+      trough = peak
+    }
+  }
+
+  return gain
+}
+
+/**
+ * A ride's climb in feet, preferring the stored column but healing bad values.
+ *
+ * Rides imported before the gain algorithm was fixed carry a stored 0 while
+ * their track plainly climbs — the old per-sample threshold discarded every
+ * step of a steady gradient. A stored 0 is therefore only trusted when the
+ * track agrees it is flat; otherwise the track wins. A genuinely flat ride
+ * recomputes to roughly zero anyway, so this costs nothing and repairs every
+ * affected ride without a migration or a re-import.
+ */
+export function rideClimbFeet(ride) {
+  const stored =
+    ride?.elevation_ft === null || ride?.elevation_ft === undefined || ride?.elevation_ft === ''
+      ? null
+      : Number(ride.elevation_ft)
+
+  const trusted = stored !== null && Number.isFinite(stored) && stored > 0
+  if (trusted) return Math.round(stored)
+
+  const metres = elevationGainMeters(ride?.track)
+  if (metres === null) return stored !== null && Number.isFinite(stored) ? Math.round(stored) : null
+  return Math.round(metres * METERS_TO_FEET)
 }
 
 /** Mean heart rate across a run of points, or null if none carry one. */

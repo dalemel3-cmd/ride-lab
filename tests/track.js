@@ -76,7 +76,22 @@ const climb = [
   [0, 0, 3, 106, null],
   [0, 0, 4, 112, null],
 ]
-check('only ascent counts', elevationGainMeters(climb), 16)
+check('only ascent counts', Math.round(elevationGainMeters(climb)), 16)
+
+// The bug a real ride exposed. A phone logging every few seconds splits a climb
+// into hundreds of sub-metre steps; rejecting each one as noise threw away the
+// whole climb. The first GPX imported here had 262 rising samples, the largest
+// 0.70 m, and reported 0 ft against a true 66 ft.
+const slowClimb = []
+for (let i = 0; i < 200; i += 1) slowClimb.push([0, 0, i * 1000, 100 + i * 0.4, null])
+const slowGain = elevationGainMeters(slowClimb)
+check('a steady climb in sub-metre steps is not discarded', slowGain > 70, true)
+check('and is close to the real 79.6 m', Math.abs(slowGain - 79.6) < 6, true)
+
+// The other direction still has to hold: jitter around a flat line is not climb.
+const flatNoisy = []
+for (let i = 0; i < 300; i += 1) flatNoisy.push([0, 0, i * 1000, 100 + Math.sin(i * 1.7) * 0.6, null])
+check('jitter around a flat line stays near zero', elevationGainMeters(flatNoisy) < 3, true)
 check('no elevation data is unknown, not flat', elevationGainMeters([legacy, legacy]), null)
 // Sub-metre jitter is GPS noise, not climbing; summing it invents hundreds of
 // phantom feet over a long ride.

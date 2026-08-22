@@ -5,7 +5,7 @@ import { avgSpeed, trainingLoad, hrZone, summarize, timeInZones } from '../../da
 import { formatDuration, formatShortDate, toDateString, toTimeString, startOfWeek, recordDate } from '../../data/dates.js'
 import { StatGrid, StatTile, EmptyState } from '../../components/ui.jsx'
 import ZoneBar from '../../components/ZoneBar.jsx'
-import { elevationGainMeters, METERS_TO_FEET } from '../../data/track.js'
+import { rideClimbFeet } from '../../data/track.js'
 import RideForm from './RideForm.jsx'
 import RecordRide from './RecordRide.jsx'
 import RouteMap from './RouteMap.jsx'
@@ -26,6 +26,12 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
   const fileInputRef = useRef(null)
 
   const totals = useMemo(() => summarize(rides), [rides])
+  // Summed from the healed per-ride value, so the headline total and the
+  // individual cards can never disagree.
+  const totalClimbFt = useMemo(
+    () => rides.reduce((sum, r) => sum + (rideClimbFeet(r) ?? 0), 0),
+    [rides],
+  )
 
   const weeks = useMemo(() => {
     const grouped = new Map()
@@ -198,7 +204,7 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
         <StatTile label="Rides" value={totals.rides} />
         <StatTile label="Distance" value={totals.distanceMi} unit="mi" />
         <StatTile label="Time" value={formatDuration(totals.durationMin)} />
-        <StatTile label="Climbing" value={totals.elevationFt.toLocaleString()} unit="ft" />
+        <StatTile label="Climbing" value={totalClimbFt.toLocaleString()} unit="ft" />
       </StatGrid>
 
       {rides.length === 0 && (
@@ -261,11 +267,7 @@ function RideCard({ ride, settings, onEdit, onDelete }) {
   // Prefer the recorded column, but fall back to the track's own elevation.
   // Showing an em dash beside a profile that visibly climbs 200 ft is asking
   // the rider for a number the app is already holding.
-  const climbFt = useMemo(() => {
-    if (ride.elevation_ft != null && ride.elevation_ft !== '') return Number(ride.elevation_ft)
-    const metres = elevationGainMeters(ride.track)
-    return metres === null ? null : Math.round(metres * METERS_TO_FEET)
-  }, [ride.elevation_ft, ride.track])
+  const climbFt = useMemo(() => rideClimbFeet(ride), [ride])
 
   const speed = avgSpeed(ride.distance_mi, ride.duration_min)
   const load = trainingLoad(ride.rpe, ride.duration_min)
