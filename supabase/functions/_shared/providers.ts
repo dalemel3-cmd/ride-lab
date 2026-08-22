@@ -76,12 +76,18 @@ export const CONFIG = {
   google_health: {
     authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
-    // Read-only, and only the two families this app actually uses: body
-    // measurements and sleep. Activity and location are deliberately absent —
-    // rides come from GPX, and an unused scope is one more thing to consent to.
+    // Read-only, and only the families this app actually reads.
+    //
+    // activity_and_fitness was added for VO2 max. Google answers 403 on the
+    // vo2-max data type without it, which reads like missing data rather than a
+    // missing permission — the `discover` action distinguishes the two. A
+    // measured VO2 max is worth the extra consent: the app otherwise estimates
+    // it from resting heart rate with Uth–Sørensen, which is a formula applied
+    // to a single number.
     scope: [
       'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
       'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
+      'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
     ].join(' '),
     clientId: () => requiredEnv('GOOGLE_CLIENT_ID'),
     clientSecret: () => requiredEnv('GOOGLE_CLIENT_SECRET'),

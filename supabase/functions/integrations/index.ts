@@ -219,6 +219,7 @@ const GOOGLE_TYPES = {
   // `resting-heart-rate`, which is not a data type at all — the plausible name
   // and the real one are rarely the same here.
   hrv: { path: 'heart-rate-variability', field: 'heart_rate_variability', timeField: 'sample_time.physical_time' },
+  vo2Max: { path: 'vo2-max', field: 'vo2_max', timeField: 'sample_time.physical_time' },
 } as const
 
 const KG_TO_LBS = 2.20462
@@ -419,6 +420,23 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
           else if (ms !== null) {
             notes.push(`hrv: ignored an out-of-range value (${ms}) — field mapping may be wrong`)
           }
+        } else if (key === 'vo2Max') {
+          // The field name is not documented, so several are tried. The range
+          // check is what makes that safe: 20–90 ml/kg/min spans untrained to
+          // elite, so a number picked out of the wrong field is dropped with a
+          // note rather than charted as a fitness result.
+          const value = findNumber(point, [
+            'vo2MaxMillilitersPerMinutePerKilogram',
+            'vo2_max_milliliters_per_minute_per_kilogram',
+            'millilitersPerMinutePerKilogram',
+            'milliliters_per_minute_per_kilogram',
+            'vo2Max',
+            'vo2_max',
+          ])
+          if (value !== null && value >= 20 && value <= 90) row.vo2_max = Math.round(value * 10) / 10
+          else if (value !== null) {
+            notes.push(`vo2 max: ignored an out-of-range value (${value}) — field mapping may be wrong`)
+          }
         }
       }
     } catch (error) {
@@ -436,6 +454,7 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
       body_fat_pct: v.body_fat_pct ?? null,
       resting_hr: v.resting_hr ?? null,
       hrv_ms: v.hrv_ms ?? null,
+      vo2_max: v.vo2_max ?? null,
       // Never automatic: which day starts the study is a decision.
       is_baseline: false,
     }))
@@ -714,7 +733,8 @@ async function probeGoogleHealth(admin: ReturnType<typeof adminClient>, userId: 
  * API: first for the data type collection itself, then by trying plausible
  * names and reporting which are accepted. A 400 naming
  * INVALID_PARENT_DATA_TYPE_COLLECTION means the identifier is wrong; a 200
- * means it is real, whether or not the account has data for it.
+ * means it is real, whether or not the account has data for it. A 403 means the
+ * type exists but its OAuth scope was never granted.
  */
 const CANDIDATE_TYPES = [
   'heart-rate',
@@ -724,6 +744,8 @@ const CANDIDATE_TYPES = [
   'daily-heart-rate',
   'cardio-fitness-score',
   'vo2-max',
+  'daily-vo2-max',
+  'run-vo2-max',
   'heart-rate-variability',
   'breathing-rate',
   'respiratory-rate',
@@ -731,6 +753,7 @@ const CANDIDATE_TYPES = [
   'height',
   'bmi',
   'active-minutes',
+  'active-zone-minutes',
   'total-calories',
 ]
 
@@ -776,6 +799,10 @@ async function discoverGoogleTypes(admin: ReturnType<typeof adminClient>, userId
     const detail = JSON.stringify(body)
     if (detail.includes('INVALID_PARENT_DATA_TYPE_COLLECTION')) {
       invalid.push(path)
+    } else if (status === 403) {
+      // Distinguishing this from missing data matters: a 403 is a permission to
+      // request, not an absence to work around.
+      valid.push(`${path} (403, exists but this scope was not granted)`)
     } else {
       valid.push(`${path} (${status}, type exists — filter rejected)`)
     }

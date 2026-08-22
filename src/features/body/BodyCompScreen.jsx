@@ -50,8 +50,34 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
     hrv_ms: m.hrv_ms != null ? Number(m.hrv_ms) : null,
   }))
 
-  const vo2Baseline = baseline ? estimateVo2Max(baseline.resting_hr, settings.maxHr) : null
-  const vo2Latest = latest ? estimateVo2Max(latest.resting_hr, settings.maxHr) : null
+  /**
+   * A measured VO2 max beats an estimated one, and the two are never mixed.
+   *
+   * The estimate is Uth–Sørensen applied to resting heart rate; the measurement
+   * comes from the watch. Silently swapping between them across the study would
+   * make a change of method look like a change of fitness — so a comparison
+   * uses one source throughout, and the label says which.
+   */
+  const vo2 = useMemo(() => {
+    const measuredRows = chronological.filter((m) => m.vo2_max != null)
+    if (measuredRows.length > 0) {
+      const first = measuredRows[0]
+      const last = measuredRows[measuredRows.length - 1]
+      return {
+        measured: true,
+        baseline: Number(first.vo2_max),
+        latest: Number(last.vo2_max),
+      }
+    }
+    return {
+      measured: false,
+      baseline: baseline ? estimateVo2Max(baseline.resting_hr, settings.maxHr) : null,
+      latest: latest ? estimateVo2Max(latest.resting_hr, settings.maxHr) : null,
+    }
+  }, [chronological, baseline, latest, settings.maxHr])
+
+  const vo2Baseline = vo2.baseline
+  const vo2Latest = vo2.latest
 
   // A deliberately-marked baseline, as opposed to the oldest-row fallback above.
   const hasExplicitBaseline = bodyComp.some((m) => m.is_baseline)
@@ -193,7 +219,7 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
             })}
             {vo2Baseline && vo2Latest && (
               <StatTile
-                label="Est. VO2 max"
+                label={vo2.measured ? 'VO2 max' : 'Est. VO2 max'}
                 value={vo2Latest}
                 unit="ml/kg/min"
                 tone={vo2Latest > vo2Baseline ? 'good' : undefined}
