@@ -112,6 +112,13 @@ export function parseGpx(xmlText) {
       ? Math.round(((lastTime - firstTime) / 60000) * 10) / 10
       : null
 
+  // Both are needed by the returned object. Removing the average while leaving
+  // the reference in place made parseGpx throw a ReferenceError on every file,
+  // which lint does not catch and only a test run reveals.
+  const avgHr = heartRates.length
+    ? Math.round(heartRates.reduce((sum, hr) => sum + hr, 0) / heartRates.length)
+    : null
+
   const maxHr = heartRates.length
     ? heartRates.reduce((max, hr) => (hr > max ? hr : max), 0)
     : null

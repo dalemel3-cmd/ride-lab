@@ -107,11 +107,35 @@ async function main() {
     1,
   )
 
+  console.log('\nBackoff defers an immediate retry')
+  const immediate = await page.evaluate(async () => {
+    const store = await import('/src/data/store.js')
+    const before = store.readQueue()[0]?.retry_count ?? 0
+    await store.syncQueue()
+    await store.syncQueue()
+    return { before, after: store.readQueue()[0]?.retry_count ?? 0 }
+  })
+  // Two calls back to back should cost only one attempt: the second is not due.
+  check('a second sync within the backoff window is skipped', immediate.after - immediate.before, 1)
+
   console.log('\nRepeated sync attempts')
   const afterAttempts = await page.evaluate(async () => {
     const store = await import('/src/data/store.js')
-    // One more than the stuck threshold, to cross it.
-    for (let i = 0; i < 6; i += 1) await store.syncQueue()
+
+    // Backoff grows 2s, 4s, 8s… Rather than wait it out, rewind the recorded
+    // attempt time so the op is due again. This exercises the stuck detection
+    // without making the suite take a minute.
+    const makeDue = () => {
+      const queue = JSON.parse(localStorage.getItem('ridelab_offline_queue') ?? '[]')
+      for (const op of queue) op.last_attempt_at = new Date(0).toISOString()
+      localStorage.setItem('ridelab_offline_queue', JSON.stringify(queue))
+    }
+
+    for (let i = 0; i < 6; i += 1) {
+      makeDue()
+      await store.syncQueue()
+    }
+
     return {
       queued: JSON.parse(localStorage.getItem('ridelab_offline_queue') ?? '[]').length,
       stuck: store.stuckEntries().length,
@@ -144,6 +168,12 @@ async function main() {
   mode = 'accept'
   const recovered = await page.evaluate(async () => {
     const store = await import('/src/data/store.js')
+    // The failed attempt above left a backoff window; clear it so the retry
+    // runs now rather than seconds from now.
+    const queue = JSON.parse(localStorage.getItem('ridelab_offline_queue') ?? '[]')
+    for (const op of queue) op.last_attempt_at = new Date(0).toISOString()
+    localStorage.setItem('ridelab_offline_queue', JSON.stringify(queue))
+
     const result = await store.syncQueue()
     return { remaining: result.remaining, synced: result.synced }
   })

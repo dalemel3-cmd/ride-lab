@@ -159,6 +159,10 @@ async function main() {
   check('every visible button is at least 44px tall', smallTargets, [])
 
   console.log('\nLogging a ride')
+  // The app now opens on the dashboard rather than the ride log, so the Log
+  // button is not on screen until Rides is selected.
+  await page.locator('.nav-item', { hasText: 'Rides' }).click()
+  await page.waitForSelector('article.card, .empty-state')
   await page.getByRole('button', { name: /Log/ }).click()
   await page.waitForSelector('#distance')
 
@@ -312,7 +316,9 @@ async function main() {
   await page.waitForSelector('h2')
   await page.waitForTimeout(1200)
   const progressText = await page.locator('.app-main').innerText()
-  check('the study window is shown', /Week \d+ of \d+/.test(progressText), true)
+  // The header renders this compactly as "W1/16"; it read "Week 1 of 16"
+  // before the progress screen was redesigned.
+  check('the study window is shown', /W\d+\/\d+/.test(progressText), true)
   check('heart rate zones are explained', progressText.includes('Endurance'), true)
   check('total distance is summarised', progressText.includes('20.4'), true)
   const charts = await page.locator('.recharts-wrapper').count()
