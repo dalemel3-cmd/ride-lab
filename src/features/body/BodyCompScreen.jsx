@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Plus, Trash2, Flag } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { trendDelta, estimateVo2Max } from '../../data/metrics.js'
@@ -53,6 +53,24 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
   const vo2Baseline = baseline ? estimateVo2Max(baseline.resting_hr, settings.maxHr) : null
   const vo2Latest = latest ? estimateVo2Max(latest.resting_hr, settings.maxHr) : null
 
+  // A deliberately-marked baseline, as opposed to the oldest-row fallback above.
+  const hasExplicitBaseline = bodyComp.some((m) => m.is_baseline)
+  const [baselineChoice, setBaselineChoice] = useState('')
+
+  // Default the picker to the most recent measurement: someone setting a
+  // baseline now is almost always starting the study now, not backdating it.
+  useEffect(() => {
+    if (!baselineChoice && latest) setBaselineChoice(latest.id)
+  }, [baselineChoice, latest])
+
+  async function handleSetBaseline() {
+    const chosen = bodyComp.find((m) => m.id === baselineChoice)
+    if (!chosen) return
+    // Reuses handleSave so the "exactly one baseline" rule stays in one place.
+    await handleSave({ ...chosen, is_baseline: true })
+    showToast(`Baseline set to ${formatShortDate(chosen.measured_at)}`)
+  }
+
   async function handleSave(record) {
     // Exactly one baseline, always. Marking a new one clears the old, because
     // two flagged rows make "Baseline vs. now" depend on iteration order rather
@@ -101,6 +119,55 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
           No measurements yet. Take a baseline now — everything in this study is measured against
           it, and you only get one chance to record where you started.
         </EmptyState>
+      )}
+
+      {/*
+        Imported measurements never set is_baseline — which day starts the study
+        is the rider's call, not an API's. But nothing said so, and a synced
+        account ends up with dozens of rows and no baseline, silently comparing
+        against whichever happens to be oldest. That is usually not the intended
+        start, and every trend on this screen inherits the mistake.
+      */}
+      {!hasExplicitBaseline && chronological.length > 1 && (
+        <section
+          className="card"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            borderLeft: '4px solid var(--status-warn)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Flag size={16} color="var(--status-warn)" aria-hidden="true" />
+            <strong style={{ fontSize: 'var(--text-sm)' }}>No study baseline set</strong>
+          </div>
+          <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>
+            You have {chronological.length} measurements, none marked as the start of the study.
+            Every comparison below is falling back to the oldest one
+            {baseline ? ` (${formatShortDate(baseline.measured_at)})` : ''}, which may be well
+            before you started riding. Pick the day the study actually begins.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select
+              aria-label="Choose the study baseline measurement"
+              value={baselineChoice}
+              onChange={(e) => setBaselineChoice(e.target.value)}
+              style={{ flex: '1 1 180px', minWidth: 0 }}
+            >
+              {chronological.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {formatShortDate(m.measured_at)}
+                  {m.weight_lbs != null ? ` · ${m.weight_lbs} lb` : ''}
+                  {m.resting_hr != null ? ` · ${m.resting_hr} bpm` : ''}
+                </option>
+              ))}
+            </select>
+            <button className="btn btn-primary" onClick={handleSetBaseline} disabled={!baselineChoice}>
+              Set baseline
+            </button>
+          </div>
+        </section>
       )}
 
       {baseline && latest && baseline.id !== latest.id && (

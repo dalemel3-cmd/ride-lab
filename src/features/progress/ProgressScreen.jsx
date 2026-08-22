@@ -37,6 +37,7 @@ import {
 } from '../../data/dates.js'
 import { StatGrid, StatTile, ScienceNote, EmptyState, ReadinessDial, FormStatusBadge } from '../../components/ui.jsx'
 import ZoneBar from '../../components/ZoneBar.jsx'
+import StudyReadiness from '../../components/StudyReadiness.jsx'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
 
@@ -114,6 +115,51 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
   const easyPercent = pct([1, 2])
   const moderatePercent = pct([3])
   const hardPercent = pct([4, 5])
+
+  // What the study can measure yet, and what each gap costs. Ordered by value,
+  // not by convenience: heart rate outranks a second ride.
+  const coverage = useMemo(() => {
+    const ridesWithHr = rides.filter(
+      (r) => r.avg_hr != null || (Array.isArray(r.track) && r.track.some((p) => p?.[4] != null)),
+    ).length
+    const repeatedGround = routeGains.length > 0
+
+    return [
+      {
+        label: 'A logged ride',
+        done: rides.length > 0,
+        enables: `${rides.length} logged. Volume, duration and training load are running.`,
+        blocks: 'Nothing can be measured until the first ride is logged or imported.',
+      },
+      {
+        label: 'Heart rate on a ride',
+        done: ridesWithHr > 0,
+        enables: `${ridesWithHr} of ${rides.length} rides carry heart rate.`,
+        blocks:
+          'The largest gap. No beats-per-mile, no time in zones, no training impulse — so effort cannot be separated from fitness. Pair a strap when recording, or export a file that includes heart rate.',
+      },
+      {
+        label: 'The same ground twice',
+        done: repeatedGround,
+        enables: `${routeGains.length} repeated ${routeGains.length === 1 ? 'route' : 'routes'} to compare.`,
+        blocks:
+          'Ride a route again and terrain stops being a variable — the cleanest evidence this study can produce.',
+      },
+      {
+        label: 'A marked body-composition baseline',
+        done: bodyComp.some((m) => m.is_baseline),
+        enables: 'Every body trend is measured from the day you chose.',
+        blocks:
+          'Comparisons fall back to your oldest measurement, which may predate the study. Set one on the Body screen.',
+      },
+      {
+        label: 'Resting heart rate',
+        done: bodyComp.some((m) => m.resting_hr != null),
+        enables: 'Estimated VO₂ max and autonomic trend are available.',
+        blocks: 'Without it there is no VO₂ max estimate and no recovery signal.',
+      },
+    ]
+  }, [rides, routeGains, bodyComp])
 
   // Total Estimated Substrate Oxidation
   const substrateTotals = useMemo(() => {
@@ -250,6 +296,8 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
       </div>
 
       {/* Cyber-Athletic Readiness & Recovery HUD */}
+      <StudyReadiness items={coverage} />
+
       <ReadinessDial readiness={readiness} />
 
       {/* Intensity distribution across the whole study. Only appears once some
