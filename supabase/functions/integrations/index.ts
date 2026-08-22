@@ -212,7 +212,13 @@ const GOOGLE_TYPES = {
   bodyFat: { path: 'body-fat', field: 'body_fat', timeField: 'sample_time.physical_time' },
   sleep: { path: 'sleep', field: 'sleep', timeField: 'interval.civil_end_time' },
   restingHeartRate: { path: 'daily-resting-heart-rate', field: 'daily_resting_heart_rate', timeField: 'date' },
-  hrv: { path: 'daily-heart-rate-variability', field: 'daily_heart_rate_variability', timeField: 'date' },
+  // `daily-heart-rate-variability` imported nothing for weeks. A discovery run
+  // against the live account showed why: the type that answers is the
+  // per-sample `heart-rate-variability`, filtered on sample_time like weight
+  // and body fat rather than on a `date` field. Same trap as
+  // `resting-heart-rate`, which is not a data type at all — the plausible name
+  // and the real one are rarely the same here.
+  hrv: { path: 'heart-rate-variability', field: 'heart_rate_variability', timeField: 'sample_time.physical_time' },
 } as const
 
 const KG_TO_LBS = 2.20462
@@ -392,8 +398,27 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
           const bpm = findNumber(point, ['beatsPerMinute', 'beats_per_minute', 'bpm'])
           if (bpm !== null) row.resting_hr = Math.round(bpm)
         } else if (key === 'hrv') {
-          const ms = findNumber(point, ['averageHeartRateVariabilityMilliseconds', 'average_heart_rate_variability_milliseconds'])
-          if (ms !== null) row.hrv_ms = Math.round(ms)
+          // Several plausible names, because the exact one is undocumented and
+          // the previous single guess silently imported nothing for weeks.
+          // Deliberately no generic `value` key: findNumber searches nested
+          // objects, and a bare `value` would happily match something that is
+          // not a duration at all.
+          const ms = findNumber(point, [
+            'averageHeartRateVariabilityMilliseconds',
+            'average_heart_rate_variability_milliseconds',
+            'heartRateVariabilityMilliseconds',
+            'heart_rate_variability_milliseconds',
+            'rmssdMilliseconds',
+            'rmssd_milliseconds',
+            'rmssd',
+            'milliseconds',
+          ])
+          // A plausible physiological range, so a misread field is dropped
+          // rather than charted. Adult resting rMSSD runs roughly 10–200 ms.
+          if (ms !== null && ms >= 5 && ms <= 400) row.hrv_ms = Math.round(ms)
+          else if (ms !== null) {
+            notes.push(`hrv: ignored an out-of-range value (${ms}) — field mapping may be wrong`)
+          }
         }
       }
     } catch (error) {
@@ -530,22 +555,18 @@ async function discoverGoogleTypes(admin: ReturnType<typeof adminClient>, userId
   const token = await validAccessToken(admin, userId, 'google_health')
   if (!token) return { connected: false }
 
-  // The collection endpoint is the authoritative answer if it exists; the
-  // candidate sweep below is only a fallback.
-  let listing: unknown = null
-  try {
-    const res = await fetch(`${GOOGLE_HEALTH_BASE}/users/me/dataTypes`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    })
-    const text = await res.text()
-    listing = { status: res.status, body: text.slice(0, 4000) }
-  } catch (error) {
-    listing = { error: String((error as Error).message ?? error) }
-  }
-
+  // There is no data type catalogue on this API: /users/me/dataTypes answers
+  // with Google's 404 HTML page. That was worth checking once and is not worth
+  // requesting on every run, so the candidate sweep below is the whole method.
   const since = new Date(Date.now() - 30 * 86400000).toISOString()
   const valid: string[] = []
   const invalid: string[] = []
+  // The raw first data point for each working type. Knowing a type exists is
+  // only half the answer: Google documents neither its units nor its value
+  // field names, so weight arrives as `weightGrams` and anything mapped by
+  // guesswork imports silently as nothing. The sample makes the mapping
+  // verifiable instead of a second guess.
+  const samples: Record<string, unknown> = {}
 
   for (const path of CANDIDATE_TYPES) {
     // The filter field is the snake_case form of the kebab-case path.
@@ -557,6 +578,11 @@ async function discoverGoogleTypes(admin: ReturnType<typeof adminClient>, userId
 
     if (ok) {
       valid.push(`${path} (200)`)
+      const points = (body as GoogleListResponse)?.dataPoints
+      samples[path] =
+        Array.isArray(points) && points.length > 0
+          ? points[0]
+          : 'type works, but no data points in the last 30 days'
       continue
     }
 
@@ -572,7 +598,7 @@ async function discoverGoogleTypes(admin: ReturnType<typeof adminClient>, userId
     }
   }
 
-  return { connected: true, collection: listing, valid, invalid }
+  return { connected: true, valid, invalid, samples }
 }
 
 Deno.serve(async (req) => {
