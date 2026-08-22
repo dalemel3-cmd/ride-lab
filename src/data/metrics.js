@@ -536,32 +536,49 @@ export function dailyReadiness({
   hrvBaseline,
   restingHr,
   restingHrBaseline,
-  recentTsb = 0,
+  recentTsb,
 } = {}) {
-  let score = 75 // Neutral baseline
+  // The neutral start is an anchor for real signals to move, not a result in
+  // its own right. Without at least one measured input, every rider would see
+  // the same invented number and be told they were in optimal condition — the
+  // exact fabrication this study cannot afford. Missing means missing.
+  let score = 75
+  let inputs = 0
 
-  if (hrv != null && hrvBaseline != null && hrvBaseline > 0) {
-    const hrvRatio = hrv / hrvBaseline
+  const hrvNow = toNumber(hrv)
+  const hrvBase = toNumber(hrvBaseline)
+  if (hrvNow !== null && hrvBase !== null && hrvBase > 0) {
+    const hrvRatio = hrvNow / hrvBase
     if (hrvRatio >= 1.05) score += 12
     else if (hrvRatio >= 0.95) score += 5
     else if (hrvRatio >= 0.85) score -= 10
     else score -= 25
+    inputs += 1
   }
 
-  if (restingHr != null && restingHrBaseline != null && restingHrBaseline > 0) {
-    const rhrDiff = restingHr - restingHrBaseline
+  const rhrNow = toNumber(restingHr)
+  const rhrBase = toNumber(restingHrBaseline)
+  if (rhrNow !== null && rhrBase !== null && rhrBase > 0) {
+    const rhrDiff = rhrNow - rhrBase
     if (rhrDiff <= -2) score += 10
     else if (rhrDiff <= 1) score += 4
     else if (rhrDiff <= 4) score -= 8
     else score -= 20
+    inputs += 1
   }
 
-  if (recentTsb != null) {
-    if (recentTsb > 5) score += 8
-    else if (recentTsb >= -15) score += 2
-    else if (recentTsb >= -30) score -= 8
+  // TSB is only meaningful once rides exist to compute it from; callers pass
+  // null rather than 0 when the performance chart is empty.
+  const tsb = toNumber(recentTsb)
+  if (tsb !== null) {
+    if (tsb > 5) score += 8
+    else if (tsb >= -15) score += 2
+    else if (tsb >= -30) score -= 8
     else score -= 18
+    inputs += 1
   }
+
+  if (inputs === 0) return null
 
   const finalScore = Math.max(10, Math.min(100, Math.round(score)))
 
@@ -584,6 +601,9 @@ export function dailyReadiness({
     zone,
     label,
     advice,
+    // How many of the three signals actually contributed. A score built on one
+    // input is a far weaker claim than one built on three, and the UI says so.
+    inputs,
   }
 }
 

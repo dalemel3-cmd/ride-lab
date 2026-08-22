@@ -73,7 +73,9 @@ export default function DashboardScreen({
           baselineBody?.resting_hr != null
             ? Number(baselineBody.resting_hr)
             : null,
-        recentTsb: latestPmc?.tsb ?? 0,
+        // Null, not 0: with no rides there is no training balance to report,
+        // and a zero here would manufacture a score out of nothing.
+        recentTsb: latestPmc?.tsb ?? null,
       }),
     [latestBody, baselineBody, latestHrvBand, latestPmc],
   )
@@ -100,23 +102,28 @@ export default function DashboardScreen({
     settings.caseStudyWeeks,
   )
 
-  // Zone 2 Target Range
+  // Zone 2 Target Range. Derived from the rider's own max HR — no fallback
+  // pair of numbers, which would be someone else's zone presented as theirs.
   const zones = hrZoneRanges(settings.maxHr)
-  const zone2 = zones[1] ?? { lowBpm: 114, highBpm: 133 }
+  const zone2 = zones[1] ?? null
 
-  // Readiness styling
+  // Readiness styling. Neutral until there is a real score to colour.
   const glowClass =
-    readiness.zone === 'green'
+    readiness?.zone === 'green'
       ? 'glow-emerald'
-      : readiness.zone === 'amber'
+      : readiness?.zone === 'amber'
         ? 'glow-amber'
-        : 'glow-crimson'
+        : readiness?.zone === 'red'
+          ? 'glow-crimson'
+          : ''
   const readinessColor =
-    readiness.zone === 'green'
+    readiness?.zone === 'green'
       ? 'var(--status-success)'
-      : readiness.zone === 'amber'
+      : readiness?.zone === 'amber'
         ? 'var(--status-warn)'
-        : 'var(--status-error)'
+        : readiness?.zone === 'red'
+          ? 'var(--status-error)'
+          : 'var(--color-text-muted)'
 
   return (
     <div className="screen">
@@ -175,59 +182,80 @@ export default function DashboardScreen({
               border: `1px solid color-mix(in srgb, ${readinessColor} 30%, transparent)`,
             }}
           >
-            {readiness.label}
+            {readiness ? readiness.label : 'Not enough data'}
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 'var(--text-3xl)',
-              fontWeight: 700,
-              color: readinessColor,
-              lineHeight: 1,
-            }}
-          >
-            {readiness.score}
-          </span>
-          <span className="muted" style={{ fontSize: 'var(--text-sm)' }}>
-            / 100 Readiness Score
-          </span>
-        </div>
+        {readiness ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+              <span
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--text-3xl)',
+                  fontWeight: 700,
+                  color: readinessColor,
+                  lineHeight: 1,
+                }}
+              >
+                {readiness.score}
+              </span>
+              <span className="muted" style={{ fontSize: 'var(--text-sm)' }}>
+                / 100 Readiness Score
+                {readiness.inputs < 3 && (
+                  <>
+                    {' '}
+                    · from {readiness.inputs} of 3 signals
+                  </>
+                )}
+              </span>
+            </div>
 
-        {/* Dynamic Training Directive */}
-        <div
-          style={{
-            padding: '10px 12px',
-            borderRadius: 'var(--radius-md)',
-            background: 'rgba(6, 15, 26, 0.6)',
-            border: '1px solid var(--color-border)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <Zap size={18} color="var(--color-accent)" style={{ flexShrink: 0 }} />
-          <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
-            <strong style={{ color: 'var(--color-text)' }}>Today's Target: </strong>
-            {readiness.zone === 'green' && (
-              <span>
-                Full capacity. Prime for Zone 4/5 threshold climbing or high-volume endurance.
-              </span>
-            )}
-            {readiness.zone === 'amber' && (
-              <span>
-                Aerobic base focus. Ride Zone 2 ({zone2.lowBpm}–{zone2.lowBpm + 15} bpm) to build mitochondria without excess stress.
-              </span>
-            )}
-            {readiness.zone === 'red' && (
-              <span>
-                Overreached autonomic state. Keep effort strictly in Zone 1 active recovery or take a rest day.
-              </span>
-            )}
-          </div>
-        </div>
+            {/* Dynamic Training Directive */}
+            <div
+              style={{
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgba(6, 15, 26, 0.6)',
+                border: '1px solid var(--color-border)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <Zap size={18} color="var(--color-accent)" style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+                <strong style={{ color: 'var(--color-text)' }}>Today's Target: </strong>
+                {readiness.zone === 'green' && (
+                  <span>
+                    Full capacity. Prime for Zone 4/5 threshold climbing or high-volume endurance.
+                  </span>
+                )}
+                {readiness.zone === 'amber' && (
+                  <span>
+                    Aerobic base focus.
+                    {zone2
+                      ? ` Ride Zone 2 (${zone2.lowBpm}–${zone2.highBpm} bpm) to build mitochondria without excess stress.`
+                      : ' Ride Zone 2 to build mitochondria without excess stress.'}
+                  </span>
+                )}
+                {readiness.zone === 'red' && (
+                  <span>
+                    Overreached autonomic state. Keep effort strictly in Zone 1 active recovery or take a rest day.
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          // No measured signal means no score. Saying so is more useful than a
+          // confident number nothing supports.
+          <p className="muted" style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
+            Readiness is calculated from your HRV and resting heart rate against your baseline,
+            plus training balance from logged rides. Log a ride, or add a resting HR measurement
+            in Body, and it will appear here.
+          </p>
+        )}
       </div>
 
       {/* 4 CORE ATHLETE TELEMETRY TILES */}

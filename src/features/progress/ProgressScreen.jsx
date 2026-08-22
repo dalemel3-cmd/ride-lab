@@ -90,7 +90,9 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
         hrvBaseline: latestHrvBand?.baselineHrv ?? (baselineBody?.hrv_ms != null ? Number(baselineBody.hrv_ms) : null),
         restingHr: latestBody?.resting_hr != null ? Number(latestBody.resting_hr) : null,
         restingHrBaseline: baselineBody?.resting_hr != null ? Number(baselineBody.resting_hr) : null,
-        recentTsb: latestPmc?.tsb ?? 0,
+        // Null, not 0 — see DashboardScreen. An absent training balance must
+        // not contribute a score of its own.
+        recentTsb: latestPmc?.tsb ?? null,
       }),
     [latestBody, baselineBody, latestHrvBand, latestPmc],
   )

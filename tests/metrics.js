@@ -281,6 +281,27 @@ const readyGreen = dailyReadiness({ hrv: 85, hrvBaseline: 80, restingHr: 50, res
 check('green zone for optimal readiness', readyGreen.zone, 'green')
 const readyRed = dailyReadiness({ hrv: 55, hrvBaseline: 80, restingHr: 62, restingHrBaseline: 52, recentTsb: -35 })
 check('red zone for high fatigue/overreaching', readyRed.zone, 'red')
+check('a full score reports all three signals', readyGreen.inputs, 3)
+
+// The neutral 75 is an anchor for real signals to move, not an answer. Before
+// this guard, an empty database scored 75 + 2 (from a TSB defaulted to zero)
+// and told every new rider they were at "Optimal Readiness" — a fabricated
+// number that never changed.
+check('no inputs yields no score at all', dailyReadiness({}), null)
+check('no arguments yields no score at all', dailyReadiness(), null)
+check(
+  'an absent training balance does not manufacture a score',
+  dailyReadiness({ hrv: null, restingHr: null, recentTsb: null }),
+  null,
+)
+check(
+  'blank strings are absent, not zero',
+  dailyReadiness({ hrv: '', hrvBaseline: '', restingHr: '', restingHrBaseline: '', recentTsb: '' }),
+  null,
+)
+const partial = dailyReadiness({ restingHr: 50, restingHrBaseline: 52 })
+check('a single real signal still scores', partial.score, 85)
+check('and reports how thin the basis is', partial.inputs, 1)
 
 console.log('\nMetabolic Substrate Utilization (FatMax)')
 const subZone2 = substrateOxidation(125, 60, 190) // ~65% max HR (Zone 2)

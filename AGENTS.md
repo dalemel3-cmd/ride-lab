@@ -46,6 +46,13 @@ finite. A naive `Number.isFinite` guard turns a blank field into a real zero and
 poisons every average. Coerce absent values to `null` and let the metric return
 `null` too. A ride with no heart rate is not a ride at 0 bpm.
 
+**A neutral starting value is not a result.** `dailyReadiness` begins at 75 as an
+anchor for real signals to move. It counts how many actually contributed and
+returns `null` when that is zero — otherwise an empty account scored a fixed 77
+and told the rider they were at "Optimal Readiness" forever. Any composite score
+added later needs the same guard, and callers must pass `null` rather than `0`
+for an input they do not have. Default parameter values are where this hides.
+
 **Partial unique indexes and `ON CONFLICT`.** Postgres will not match a partial
 index to an upsert unless the statement repeats the index's `WHERE` clause, and
 PostgREST cannot express that. Import indexes must be plain unique indexes. NULLs

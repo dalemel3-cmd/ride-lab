@@ -149,6 +149,14 @@ async function main() {
   const seeded = await page.evaluate(() => JSON.parse(localStorage.getItem('ridelab_routes')).length)
   check('seeds the Bentonville route library', seeded > 0, true)
 
+  console.log('\nReadiness on an empty account')
+  // No rides and no measurements means nothing to judge readiness from. This
+  // used to render a fixed 77 / "Optimal Readiness" regardless — a number with
+  // no data behind it, which is the one thing this app must never do.
+  const cockpit = await page.locator('.card').first().innerText()
+  check('no readiness score before any data exists', /100 Readiness Score/.test(cockpit), false)
+  check('it says so instead', /not enough data/i.test(cockpit), true)
+
   console.log('\nTap targets')
   // Anything tappable must clear 44px — this app gets used with gloves on.
   const smallTargets = await page.evaluate(() =>
