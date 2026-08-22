@@ -6,6 +6,7 @@ import {
   TrendingUp,
   Plus,
   Bike,
+  Gauge,
 } from 'lucide-react'
 import {
   dailyReadiness,
@@ -14,6 +15,8 @@ import {
   efficiencyBySurface,
   weeklyRollup,
   hrZoneRanges,
+  acwr,
+  weeklyMonotony,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
@@ -93,6 +96,21 @@ export default function DashboardScreen({
     load: 0,
     rides: 0,
   }
+
+  // 6. ACWR (Gabbett Workload Ratio)
+  const currentAcwr = useMemo(
+    () =>
+      latestPmc?.atl != null && latestPmc?.ctl != null
+        ? acwr(latestPmc.atl, latestPmc.ctl)
+        : null,
+    [latestPmc],
+  )
+
+  // 7. Foster Monotony & Strain (7-day rolling)
+  const currentMonotony = useMemo(
+    () => weeklyMonotony(rides, { defaultMaxHr: settings.maxHr }),
+    [rides, settings.maxHr],
+  )
 
   // Study Progress
   const studyStart = settings.caseStudyStartDate
@@ -428,6 +446,148 @@ export default function DashboardScreen({
           </span>
         </div>
       </StatGrid>
+
+      {/* SECTION: Workload & Periodization Radar (ACWR + Monotony) */}
+      {(currentAcwr || currentMonotony) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Gauge size={16} color="var(--color-accent)" />
+            <span
+              style={{
+                color: 'var(--color-text-muted)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+              }}
+            >
+              Workload & Periodization Safety
+            </span>
+          </div>
+
+          <StatGrid min={140}>
+            {/* ACWR Card */}
+            <div
+              className="card"
+              style={{
+                padding: 14,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                borderLeft: `3px solid ${
+                  currentAcwr?.tone === 'good'
+                    ? 'var(--status-success)'
+                    : currentAcwr?.tone === 'warn'
+                      ? 'var(--status-warn)'
+                      : currentAcwr?.tone === 'bad'
+                        ? 'var(--status-error)'
+                        : 'var(--color-border)'
+                }`,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span
+                  style={{
+                    color: 'var(--color-text-muted)',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  ACWR (Gabbett)
+                </span>
+                {currentAcwr && (
+                  <FormStatusBadge status={currentAcwr.label} tone={currentAcwr.tone} />
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'var(--text-2xl)',
+                    color:
+                      currentAcwr?.tone === 'good'
+                        ? 'var(--status-success)'
+                        : currentAcwr?.tone === 'warn'
+                          ? 'var(--status-warn)'
+                          : currentAcwr?.tone === 'bad'
+                            ? 'var(--status-error)'
+                            : 'var(--color-text)',
+                  }}
+                >
+                  {currentAcwr ? currentAcwr.ratio : '—'}
+                </span>
+                <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                  ATL / CTL
+                </span>
+              </div>
+              <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+                {currentAcwr ? currentAcwr.description : 'Awaiting load history'}
+              </span>
+            </div>
+
+            {/* Foster Monotony Card */}
+            <div
+              className="card"
+              style={{
+                padding: 14,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                borderLeft: `3px solid ${
+                  currentMonotony?.tone === 'good'
+                    ? 'var(--status-success)'
+                    : currentMonotony?.tone === 'warn'
+                      ? 'var(--status-warn)'
+                      : currentMonotony?.tone === 'bad'
+                        ? 'var(--status-error)'
+                        : 'var(--color-border)'
+                }`,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span
+                  style={{
+                    color: 'var(--color-text-muted)',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Monotony & Strain
+                </span>
+                {currentMonotony && (
+                  <FormStatusBadge status={currentMonotony.label} tone={currentMonotony.tone} />
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 'var(--text-2xl)',
+                    color:
+                      currentMonotony?.tone === 'good'
+                        ? 'var(--status-success)'
+                        : currentMonotony?.tone === 'warn'
+                          ? 'var(--status-warn)'
+                          : currentMonotony?.tone === 'bad'
+                            ? 'var(--status-error)'
+                            : 'var(--color-text)',
+                  }}
+                >
+                  {currentMonotony ? currentMonotony.monotony : '—'}
+                </span>
+                <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                  {currentMonotony ? `Strain: ${currentMonotony.strain}` : ''}
+                </span>
+              </div>
+              <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+                {currentMonotony ? currentMonotony.description : '7-day load variance index'}
+              </span>
+            </div>
+          </StatGrid>
+        </div>
+      )}
 
       {/* QUICK STATUS & LAST RIDE INSIGHT */}
       {latestRide && (

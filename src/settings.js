@@ -158,3 +158,14 @@ export const SEED_ROUTES = [
     notes: 'More technical. Save it for when the legs and skills are ready.',
   },
 ]
+
+export const ACWR_THRESHOLDS = {
+  undertrainingMax: 0.8,
+  sweetSpotMax: 1.3,
+  cautionMax: 1.5,
+}
+
+export const FOSTER_MONOTONY_THRESHOLDS = {
+  optimalMax: 1.5,
+  moderateMax: 2.0,
+}

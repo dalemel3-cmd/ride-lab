@@ -12,6 +12,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ReferenceArea,
+  ReferenceLine,
 } from 'recharts'
 import { Download, Flame } from 'lucide-react'
 import {
@@ -26,6 +28,8 @@ import {
   substrateOxidation,
   timeInZones,
   combineZoneTimes,
+  acwr,
+  weeklyMonotony,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
@@ -70,6 +74,23 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     [rides, settings.maxHr],
   )
   const latestPmc = pmcSeries[pmcSeries.length - 1] ?? null
+
+  // Acute:Chronic Workload Ratio (ACWR) & Periodization Stats
+  const acwrSeries = useMemo(
+    () => pmcSeries.filter((p) => p.acwr !== null),
+    [pmcSeries],
+  )
+  const latestAcwr = useMemo(
+    () =>
+      latestPmc?.atl != null && latestPmc?.ctl != null
+        ? acwr(latestPmc.atl, latestPmc.ctl)
+        : null,
+    [latestPmc],
+  )
+  const monotonyStats = useMemo(
+    () => weeklyMonotony(rides, { defaultMaxHr: settings.maxHr }),
+    [rides, settings.maxHr],
+  )
 
   // HRV Autonomic Bands
   const hrvBands = useMemo(() => hrvAutonomicBands(bodyComp), [bodyComp])
@@ -410,6 +431,88 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
             Fitness (CTL) takes ~6 weeks to build and decays slowly; Fatigue (ATL) spikes immediately and dissipates in ~7 days. 
             <strong> Training Stress Balance (TSB = CTL − ATL)</strong> reveals your physiological readiness: 
             negative values (−10 to −30) represent productive progressive overload; positive values (+5 to +20) represent peak race form.
+          </ScienceNote>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Acute:Chronic Workload Ratio (ACWR) & Periodization Safety        */}
+      {/* ---------------------------------------------------------------- */}
+      {acwrSeries.length > 2 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <h3 style={{ fontSize: 'var(--text-lg)' }}>Workload Ratio (ACWR) & Periodization</h3>
+            <span className="muted">Gabbett Sweet Spot (0.80–1.30) & Foster Monotony</span>
+          </div>
+
+          {latestAcwr && (
+            <StatGrid min={110}>
+              <StatTile
+                label="ACWR"
+                value={latestAcwr.ratio}
+                unit="ATL/CTL"
+                tone={latestAcwr.tone}
+                hint={latestAcwr.label}
+              />
+              <StatTile
+                label="7-Day Monotony"
+                value={monotonyStats ? monotonyStats.monotony : '—'}
+                tone={monotonyStats?.tone ?? 'neutral'}
+                hint={monotonyStats ? monotonyStats.label : 'Daily load variance'}
+              />
+              <StatTile
+                label="Weekly Strain"
+                value={monotonyStats ? monotonyStats.strain.toLocaleString() : '—'}
+                hint="Load × Monotony"
+              />
+            </StatGrid>
+          )}
+
+          <div className="card">
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={acwrSeries} margin={CHART_MARGIN}>
+                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
+                <XAxis dataKey="date" stroke="var(--color-text-muted)" tick={{ fontSize: 11 }} />
+                <YAxis
+                  stroke="var(--color-text-muted)"
+                  tick={{ fontSize: 11 }}
+                  domain={[0, (dataMax) => Math.max(2.0, Math.ceil(dataMax * 1.2 * 10) / 10)]}
+                />
+                <Tooltip contentStyle={tooltipStyle} />
+                <ReferenceArea
+                  y1={0.8}
+                  y2={1.3}
+                  fill="rgba(52, 211, 153, 0.12)"
+                  stroke="rgba(52, 211, 153, 0.3)"
+                  strokeDasharray="2 2"
+                />
+                <ReferenceLine
+                  y={1.5}
+                  stroke="var(--status-error)"
+                  strokeDasharray="3 3"
+                  strokeWidth={1.5}
+                  label={{ value: 'Danger (1.50)', fill: 'var(--status-error)', fontSize: 10, position: 'insideTopRight' }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="acwr"
+                  name="ACWR Ratio"
+                  stroke="var(--color-accent)"
+                  strokeWidth={2.5}
+                  dot={{ r: 2 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+            <p className="muted" style={{ margin: '8px 0 0', fontSize: 'var(--text-xs)' }}>
+              Green Shaded Band = Sweet Spot (0.80–1.30) · Red Dashed Line = Danger Zone (&gt;1.50)
+            </p>
+          </div>
+
+          <ScienceNote title="Gabbett ACWR & Foster Monotony Frameworks">
+            Dr. Tim Gabbett’s <strong>Acute:Chronic Workload Ratio</strong> compares short-term fatigue (ATL) against long-term prepared fitness (CTL). 
+            Staying in the <strong>0.80–1.30 Sweet Spot</strong> delivers maximum adaptation with minimum soft-tissue injury risk. 
+            Dr. Carl Foster’s <strong>Training Monotony Index</strong> guards against overtraining: doing identical daily rides produces high monotony (&gt;2.0), 
+            which degrades immune function and adaptation even at moderate weekly volumes.
           </ScienceNote>
         </section>
       )}

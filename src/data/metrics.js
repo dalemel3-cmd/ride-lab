@@ -8,6 +8,7 @@
  */
 
 import { startOfWeek, toDateString, recordDate } from './dates.js'
+import { ACWR_THRESHOLDS, FOSTER_MONOTONY_THRESHOLDS } from '../settings.js'
 
 /**
  * Coerce a value to a number, treating "absent" as absent.
@@ -590,6 +591,7 @@ export function performanceManagementChart(rides = [], { ctlDays = 42, atlDays =
       ctl: Math.round(ctl * 10) / 10,
       atl: Math.round(atl * 10) / 10,
       tsb: Math.round(tsb * 10) / 10,
+      acwr: ctl >= 1 ? Math.round((atl / ctl) * 100) / 100 : null,
       status,
       tone,
     })
@@ -784,4 +786,164 @@ export function substrateOxidation(avgHrValue, durationMin, maxHrValue) {
     carbPercentage: Math.round((1 - fatFraction) * 100),
   }
 }
+
+/**
+ * Acute:Chronic Workload Ratio (ACWR - Dr. Tim Gabbett model).
+ *
+ * ACWR = ATL / CTL
+ *
+ * Sweet Spot (0.8 - 1.3): progressive overload with lowest relative injury risk.
+ * Caution Zone (1.3 - 1.5): accelerated fatigue accumulation.
+ * Danger Zone (> 1.5): critical spike in acute fatigue; heightened risk of soft tissue injury / overreaching.
+ */
+export function acwr(atl, ctl, thresholds = ACWR_THRESHOLDS) {
+  const a = toNumber(atl)
+  const c = toNumber(ctl)
+
+  if (a === null || c === null || c < 1) {
+    return null
+  }
+
+  const ratio = Math.round((a / c) * 100) / 100
+  const undertraining = thresholds?.undertrainingMax ?? 0.8
+  const sweetSpotMax = thresholds?.sweetSpotMax ?? 1.3
+  const cautionMax = thresholds?.cautionMax ?? 1.5
+
+  let zone = 'sweet-spot'
+  let label = 'Optimal Sweet Spot'
+  let tone = 'good'
+  let description = 'Workload ramp rate is progressive and within the lowest relative injury risk zone.'
+
+  if (ratio < undertraining) {
+    zone = 'undertraining'
+    label = 'Deload / Undertraining'
+    tone = 'neutral'
+    description = 'Acute load is below chronic fitness; low injury risk with gradual fitness decay.'
+  } else if (ratio <= sweetSpotMax) {
+    zone = 'sweet-spot'
+    label = 'Optimal Sweet Spot'
+    tone = 'good'
+    description = 'Workload ramp rate is progressive and within the lowest relative injury risk zone.'
+  } else if (ratio <= cautionMax) {
+    zone = 'caution'
+    label = 'High Overload / Caution'
+    tone = 'warn'
+    description = 'Rapid load ramp rate. Monitor recovery and avoid consecutive high-intensity days.'
+  } else {
+    zone = 'danger'
+    label = 'Danger Zone'
+    tone = 'bad'
+    description = 'Spike in acute fatigue exceeds chronic capacity. High risk of maladaptive overreaching.'
+  }
+
+  return {
+    ratio,
+    zone,
+    label,
+    tone,
+    description,
+  }
+}
+
+/**
+ * Carl Foster's Training Monotony & Strain Index (Foster, 1998).
+ *
+ * Monotony = mean(dailyLoads) / sd(dailyLoads)
+ * Strain = totalWeeklyLoad × Monotony
+ *
+ * Daily loads array must represent consecutive days (rest days = 0).
+ * High volume is well-tolerated when monotony is low (varied easy & hard days).
+ * High volume + High monotony (≥ 2.0) drastically increases illness and staleness risk.
+ */
+export function fosterMonotonyAndStrain(dailyLoads = [], thresholds = FOSTER_MONOTONY_THRESHOLDS) {
+  if (!Array.isArray(dailyLoads) || dailyLoads.length === 0) return null
+
+  const cleaned = dailyLoads.map((v) => Number(v) || 0)
+  const count = cleaned.length
+  if (count < 2) return null
+
+  const totalLoad = Math.round(cleaned.reduce((sum, v) => sum + v, 0) * 10) / 10
+  if (totalLoad === 0) return null
+
+  const mean = totalLoad / count
+  const variance = cleaned.reduce((sum, v) => sum + (v - mean) ** 2, 0) / count
+  const sd = Math.sqrt(variance)
+
+  // If SD is zero (identical non-zero load every single day), monotony is clamped to high max
+  const rawMonotony = sd === 0 ? 10 : mean / sd
+  const monotony = Math.round(rawMonotony * 100) / 100
+  const strain = Math.round(totalLoad * monotony)
+
+  const optimalMax = thresholds?.optimalMax ?? 1.5
+  const moderateMax = thresholds?.moderateMax ?? 2.0
+
+  let monotonyZone = 'optimal'
+  let label = 'Optimal Variation'
+  let tone = 'good'
+  let description = 'Healthy day-to-day load variation between hard, moderate, and rest days.'
+
+  if (monotony < optimalMax) {
+    monotonyZone = 'optimal'
+    label = 'Optimal Variation'
+    tone = 'good'
+    description = 'Healthy day-to-day load variation between hard, moderate, and rest days.'
+  } else if (monotony <= moderateMax) {
+    monotonyZone = 'moderate'
+    label = 'Moderate Monotony'
+    tone = 'warn'
+    description = 'Daily training is becoming repetitive. Introduce lighter recovery days or polarized contrast.'
+  } else {
+    monotonyZone = 'high'
+    label = 'High Monotony Alert'
+    tone = 'bad'
+    description = 'Severe lack of day-to-day variation. High vulnerability to staleness and overtraining syndrome.'
+  }
+
+  return {
+    totalLoad,
+    meanDailyLoad: Math.round(mean * 10) / 10,
+    sdLoad: Math.round(sd * 10) / 10,
+    monotony,
+    strain,
+    monotonyZone,
+    label,
+    tone,
+    description,
+  }
+}
+
+/**
+ * 7-Day Rolling Training Monotony & Strain helper from a list of rides.
+ */
+export function weeklyMonotony(rides = [], { days = 7, defaultMaxHr = 190, endDate } = {}) {
+  if (!Array.isArray(rides) || rides.length === 0) return null
+
+  const end = endDate ? new Date(endDate) : new Date()
+  const dailyMap = new Map()
+
+  for (const ride of rides) {
+    const d = recordDate(ride)
+    let load = null
+    if (ride.avg_hr && ride.duration_min) {
+      load = trimp(ride.avg_hr, ride.duration_min, defaultMaxHr)
+    }
+    if (load === null && ride.rpe && ride.duration_min) {
+      load = Math.round((trainingLoad(ride.rpe, ride.duration_min) / 3) * 10) / 10
+    }
+    if (load !== null) {
+      dailyMap.set(d, (dailyMap.get(d) ?? 0) + load)
+    }
+  }
+
+  const dailyLoads = []
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const targetDate = new Date(end)
+    targetDate.setDate(targetDate.getDate() - i)
+    const dateStr = targetDate.toISOString().slice(0, 10)
+    dailyLoads.push(dailyMap.get(dateStr) ?? 0)
+  }
+
+  return fosterMonotonyAndStrain(dailyLoads)
+}
+
 

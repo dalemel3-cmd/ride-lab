@@ -33,6 +33,9 @@ import {
   substrateOxidation,
   timeInZones,
   combineZoneTimes,
+  acwr,
+  fosterMonotonyAndStrain,
+  weeklyMonotony,
 } from '../src/data/metrics.js'
 import {
   startOfWeek,
@@ -348,6 +351,44 @@ check('two identical rides double the seconds', combined[1].seconds, 120)
 check('and the split is unchanged', combined[1].percent, 100)
 check('nothing to combine is null', combineZoneTimes([]), null)
 check('nulls are ignored, not counted', combineZoneTimes([null, timeInZones(zoneTrack, 190)])[1].seconds, 60)
+
+console.log('\nAcute:Chronic Workload Ratio (ACWR)')
+const sweetAcwr = acwr(105, 100)
+check('sweet spot ratio is computed', sweetAcwr.ratio, 1.05)
+check('sweet spot zone is identified', sweetAcwr.zone, 'sweet-spot')
+check('undertraining zone is identified', acwr(60, 100).zone, 'undertraining')
+check('caution zone is identified', acwr(140, 100).zone, 'caution')
+const dangerAcwr = acwr(165, 100)
+check('danger zone is identified', dangerAcwr.zone, 'danger')
+check('danger zone triggers alert tone', dangerAcwr.tone, 'bad')
+check('missing acute load is null', acwr(null, 100), null)
+check('missing chronic load is null', acwr(100, null), null)
+check('zero chronic load is null, not Infinity', acwr(100, 0), null)
+check('empty strings are null', acwr('', ''), null)
+
+console.log('\nFoster Training Monotony & Strain Index')
+const variedWeek = [0, 100, 0, 150, 0, 80, 0] // 3 training days, 4 rest days
+const variedStats = fosterMonotonyAndStrain(variedWeek)
+check('computes total weekly load', variedStats.totalLoad, 330)
+check('varied training has low monotony (<1.0)', variedStats.monotony < 1.0, true)
+check('varied training is in optimal zone', variedStats.monotonyZone, 'optimal')
+check('computes training strain (load × monotony)', variedStats.strain, Math.round(330 * variedStats.monotony))
+
+const monotonousWeek = [50, 50, 50, 50, 50, 50, 50] // identical daily load
+const monoStats = fosterMonotonyAndStrain(monotonousWeek)
+check('identical training produces high monotony', monoStats.monotony >= 2.0, true)
+check('identical training triggers high alert zone', monoStats.monotonyZone, 'high')
+
+check('all rest days is null, not zero division', fosterMonotonyAndStrain([0, 0, 0, 0, 0, 0, 0]), null)
+check('empty array is null', fosterMonotonyAndStrain([]), null)
+check('single day is null', fosterMonotonyAndStrain([100]), null)
+
+const mockRideList = [
+  { ridden_at: '2026-08-20T12:00:00Z', avg_hr: 150, duration_min: 60 },
+  { ridden_at: '2026-08-21T12:00:00Z', avg_hr: 140, duration_min: 45 },
+]
+const weekMonotonyResult = weeklyMonotony(mockRideList, { endDate: '2026-08-22' })
+check('weeklyMonotony helper produces valid output', weekMonotonyResult !== null, true)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)
