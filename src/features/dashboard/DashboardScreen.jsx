@@ -29,7 +29,7 @@ import {
   daysBetween,
   recordDate,
 } from '../../data/dates.js'
-import { StatGrid, FormStatusBadge } from '../../components/ui.jsx'
+import { FormStatusBadge } from '../../components/ui.jsx'
 import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 
 export default function DashboardScreen({
@@ -417,26 +417,27 @@ export default function DashboardScreen({
         )}
       </div>
 
-      {/* 6 UNIFIED ATHLETE TELEMETRY TILES */}
-      <StatGrid min={140}>
+      {/* 6 SPACIOUS, FULLY-LEGIBLE ATHLETE TELEMETRY TILES */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
+          gap: 12,
+        }}
+      >
         {/* TILE 1: Training Stress Balance (TSB / Form) */}
         <div
           className="card"
-          style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflow: 'hidden' }}
+          style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                flex: 1,
-                minWidth: 0,
+                letterSpacing: '0.05em',
               }}
             >
               Form (TSB)
@@ -445,170 +446,156 @@ export default function DashboardScreen({
               <FormStatusBadge status={latestPmc.status.split('/')[0]} tone={latestPmc.tone} />
             )}
           </div>
-          <span
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 'var(--text-2xl)',
-              lineHeight: 1.1,
-              color:
-                latestPmc?.tone === 'good'
-                  ? 'var(--status-success)'
-                  : latestPmc?.tone === 'warn'
-                    ? 'var(--status-warn)'
-                    : latestPmc?.tone === 'bad'
-                      ? 'var(--status-error)'
-                      : 'var(--color-accent)',
-            }}
-          >
-            {latestPmc ? (latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb) : '—'}
-          </span>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--text-3xl)',
+                lineHeight: 1,
+                color:
+                  latestPmc?.tone === 'good'
+                    ? 'var(--status-success)'
+                    : latestPmc?.tone === 'warn'
+                      ? 'var(--status-warn)'
+                      : latestPmc?.tone === 'bad'
+                        ? 'var(--status-error)'
+                        : 'var(--color-accent)',
+              }}
+            >
+              {latestPmc ? (latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb) : '—'}
+            </span>
+          </div>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
             {latestPmc
-              ? `Fit ${latestPmc.ctl} · Fat ${latestPmc.atl}`
-              : 'Log a ride to build'}
+              ? `Fitness ${latestPmc.ctl} · Fatigue ${latestPmc.atl}`
+              : 'Log a ride to build Banister model'}
           </span>
         </div>
 
         {/* TILE 2: Autonomic Balance (Resting HR & HRV) */}
         <div
           className="card"
-          style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflow: 'hidden' }}
+          style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                flex: 1,
-                minWidth: 0,
+                letterSpacing: '0.05em',
               }}
             >
-              Resting HR
+              Resting Heart Rate
             </span>
-            <Heart size={14} color="var(--color-accent)" style={{ flexShrink: 0 }} />
+            <Heart size={15} color="var(--color-accent)" style={{ flexShrink: 0 }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-2xl)',
-                lineHeight: 1.1,
+                fontSize: 'var(--text-3xl)',
+                lineHeight: 1,
                 color: 'var(--color-text)',
               }}
             >
               {latestBody?.resting_hr ?? '—'}
             </span>
-            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+            <span className="muted" style={{ fontSize: 'var(--text-sm)' }}>
               bpm
             </span>
           </div>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            HRV: {latestBody?.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'}
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+            HRV: {latestBody?.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'} (
+            {latestHrvBand?.autonomicState ?? 'Normal State'})
           </span>
         </div>
 
         {/* TILE 3: Aerobic Efficiency (Cardiac Cost per Mile) */}
         <div
           className="card"
-          style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflow: 'hidden' }}
+          style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                flex: 1,
-                minWidth: 0,
+                letterSpacing: '0.05em',
               }}
             >
               Cardiac Cost
             </span>
-            <TrendingUp size={14} color="var(--status-success)" style={{ flexShrink: 0 }} />
+            <TrendingUp size={15} color="var(--status-success)" style={{ flexShrink: 0 }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-2xl)',
-                lineHeight: 1.1,
+                fontSize: 'var(--text-3xl)',
+                lineHeight: 1,
                 color: 'var(--color-text)',
               }}
             >
               {efficiencyTrend?.last ?? '—'}
             </span>
-            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+            <span className="muted" style={{ fontSize: 'var(--text-sm)' }}>
               beats/mi
             </span>
           </div>
           <span
             style={{
               fontSize: 'var(--text-xs)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              lineHeight: 1.4,
               color: efficiencyTrend?.improved
                 ? 'var(--status-success)'
                 : 'var(--color-text-muted)',
             }}
           >
             {efficiencyTrend
-              ? `${efficiencyTrend.change > 0 ? '+' : ''}${efficiencyTrend.change} (${efficiencyTrend.pctChange}%)`
-              : 'On primary surface'}
+              ? `${efficiencyTrend.change > 0 ? '+' : ''}${efficiencyTrend.change} (${efficiencyTrend.pctChange}%) vs baseline`
+              : 'Aerobic efficiency on primary surface'}
           </span>
         </div>
 
         {/* TILE 4: Weekly Volume & Training Load */}
         <div
           className="card"
-          style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, overflow: 'hidden' }}
+          style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                flex: 1,
-                minWidth: 0,
+                letterSpacing: '0.05em',
               }}
             >
               Week Volume
             </span>
-            <Bike size={14} color="var(--zone-4)" style={{ flexShrink: 0 }} />
+            <Bike size={15} color="var(--zone-4)" style={{ flexShrink: 0 }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-2xl)',
-                lineHeight: 1.1,
+                fontSize: 'var(--text-3xl)',
+                lineHeight: 1,
                 color: 'var(--color-text)',
               }}
             >
               {currentWeekRollup.distanceMi}
             </span>
-            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+            <span className="muted" style={{ fontSize: 'var(--text-sm)' }}>
               mi
             </span>
           </div>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
             {formatDuration(currentWeekRollup.durationMin)} · Load {currentWeekRollup.load}
           </span>
         </div>
@@ -617,12 +604,11 @@ export default function DashboardScreen({
         <div
           className="card"
           style={{
-            padding: 12,
+            padding: '14px 16px',
             display: 'flex',
             flexDirection: 'column',
-            gap: 6,
+            gap: 8,
             minWidth: 0,
-            overflow: 'hidden',
             borderLeft: `3px solid ${
               currentAcwr?.tone === 'good'
                 ? 'var(--status-success)'
@@ -634,22 +620,17 @@ export default function DashboardScreen({
             }`,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                flex: 1,
-                minWidth: 0,
+                letterSpacing: '0.05em',
               }}
             >
-              ACWR
+              ACWR (Gabbett)
             </span>
             {currentAcwr && (
               <FormStatusBadge status={currentAcwr.label} tone={currentAcwr.tone} />
@@ -659,8 +640,8 @@ export default function DashboardScreen({
             <span
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-2xl)',
-                lineHeight: 1.1,
+                fontSize: 'var(--text-3xl)',
+                lineHeight: 1,
                 color:
                   currentAcwr?.tone === 'good'
                     ? 'var(--status-success)'
@@ -677,8 +658,8 @@ export default function DashboardScreen({
               ATL / CTL
             </span>
           </div>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {currentAcwr ? currentAcwr.description : 'Load history'}
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+            {currentAcwr ? currentAcwr.description : 'Awaiting load history'}
           </span>
         </div>
 
@@ -686,12 +667,11 @@ export default function DashboardScreen({
         <div
           className="card"
           style={{
-            padding: 12,
+            padding: '14px 16px',
             display: 'flex',
             flexDirection: 'column',
-            gap: 6,
+            gap: 8,
             minWidth: 0,
-            overflow: 'hidden',
             borderLeft: `3px solid ${
               currentMonotony?.tone === 'good'
                 ? 'var(--status-success)'
@@ -703,22 +683,17 @@ export default function DashboardScreen({
             }`,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                flex: 1,
-                minWidth: 0,
+                letterSpacing: '0.05em',
               }}
             >
-              Monotony
+              Monotony & Strain
             </span>
             {currentMonotony && (
               <FormStatusBadge status={currentMonotony.label} tone={currentMonotony.tone} />
@@ -728,8 +703,8 @@ export default function DashboardScreen({
             <span
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-2xl)',
-                lineHeight: 1.1,
+                fontSize: 'var(--text-3xl)',
+                lineHeight: 1,
                 color:
                   currentMonotony?.tone === 'good'
                     ? 'var(--status-success)'
@@ -746,11 +721,11 @@ export default function DashboardScreen({
               {currentMonotony ? `Strain ${currentMonotony.strain}` : ''}
             </span>
           </div>
-          <span className="muted" style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {currentMonotony ? currentMonotony.description : '7-day load variance'}
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+            {currentMonotony ? currentMonotony.description : '7-day load variance index'}
           </span>
         </div>
-      </StatGrid>
+      </div>
 
       {/* Polarized Training 80/20 Distribution Gauge */}
       {polarizedRecentAudit && (
