@@ -209,7 +209,7 @@ export default function DashboardScreen({
         </div>
       </div>
 
-      {/* METRIC 1: Hero Daily Readiness Dial & Training Prescription */}
+      {/* HERO ATHLETE COMMAND CENTER (Readiness + Directive + Matched Route + 1-Tap Nav) */}
       <div
         className={`card card-glass-glow ${glowClass}`}
         style={{
@@ -218,6 +218,7 @@ export default function DashboardScreen({
           gap: 14,
           borderLeft: `4px solid ${readinessColor}`,
           position: 'relative',
+          background: 'linear-gradient(135deg, rgba(18, 38, 60, 0.9) 0%, rgba(6, 15, 26, 0.85) 100%)',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -280,7 +281,7 @@ export default function DashboardScreen({
               style={{
                 padding: '10px 12px',
                 borderRadius: 'var(--radius-md)',
-                background: 'rgba(6, 15, 26, 0.6)',
+                background: 'rgba(6, 15, 26, 0.65)',
                 border: '1px solid var(--color-border)',
                 display: 'flex',
                 alignItems: 'center',
@@ -310,10 +311,91 @@ export default function DashboardScreen({
                 )}
               </div>
             </div>
+
+            {/* MATCHED ROUTE & 1-TAP NAVIGATION IN HERO */}
+            {suggestedRoute && (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(34, 211, 238, 0.04)',
+                  border: '1px solid rgba(34, 211, 238, 0.2)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Navigation size={14} color="var(--color-accent)" />
+                    <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
+                      {suggestedRoute.name}
+                    </strong>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      color: 'var(--color-accent)',
+                    }}
+                  >
+                    {suggestedRoute.difficulty}
+                  </span>
+                </div>
+
+                <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                  {[
+                    suggestedRoute.area,
+                    suggestedRoute.distance_mi != null && `${suggestedRoute.distance_mi} mi`,
+                    suggestedRoute.elevation_ft != null && `${suggestedRoute.elevation_ft} ft climb`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+                      settings?.homeBase || '1105 SW Grand Blvd, Bentonville, AR',
+                    )}&destination=${encodeURIComponent(
+                      suggestedRoute.destination || `${suggestedRoute.name}, Bentonville, AR`,
+                    )}&travelmode=bicycling`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-primary"
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 'var(--text-xs)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <Navigation size={14} aria-hidden="true" />
+                    Navigate in Google Maps
+                  </a>
+
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => onNavigate('routes')}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 'var(--text-xs)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    View Cues & Library
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         ) : (
-          // No measured signal means no score. Saying so is more useful than a
-          // confident number nothing supports.
           <p className="muted" style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
             Readiness is calculated from your HRV and resting heart rate against your baseline,
             plus training balance from logged rides. Log a ride, or add a resting HR measurement
@@ -322,121 +404,9 @@ export default function DashboardScreen({
         )}
       </div>
 
-      {/* TODAY'S SUGGESTED ROUTE & NAVIGATION CARD */}
-      {suggestedRoute && (
-        <div
-          className="card"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
-            borderLeft: '4px solid var(--color-accent)',
-            background:
-              'linear-gradient(135deg, rgba(13, 148, 136, 0.08) 0%, rgba(6, 15, 26, 0.6) 100%)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Navigation size={15} color="var(--color-accent)" />
-              <span
-                style={{
-                  color: 'var(--color-text-muted)',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                }}
-              >
-                Today's Suggested Route
-              </span>
-            </div>
-            {suggestedRoute.difficulty && (
-              <span
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  color: 'var(--color-accent)',
-                }}
-              >
-                {suggestedRoute.difficulty}
-              </span>
-            )}
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              flexWrap: 'wrap',
-              gap: 6,
-            }}
-          >
-            <strong style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-lg)' }}>
-              {suggestedRoute.name}
-            </strong>
-            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-              {[
-                suggestedRoute.area,
-                suggestedRoute.distance_mi != null && `${suggestedRoute.distance_mi} mi`,
-                suggestedRoute.elevation_ft != null && `${suggestedRoute.elevation_ft} ft climb`,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </span>
-          </div>
-
-          {suggestedRoute.notes && (
-            <p className="muted" style={{ margin: 0, fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
-              {suggestedRoute.notes}
-            </p>
-          )}
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-            <a
-              href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-                settings?.homeBase || '1105 SW Grand Blvd, Bentonville, AR',
-              )}&destination=${encodeURIComponent(
-                suggestedRoute.destination || `${suggestedRoute.name}, Bentonville, AR`,
-              )}&travelmode=bicycling`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-primary"
-              style={{
-                padding: '6px 12px',
-                fontSize: 'var(--text-xs)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                textDecoration: 'none',
-              }}
-            >
-              <Navigation size={14} aria-hidden="true" />
-              Navigate in Google Maps
-            </a>
-
-            <button
-              type="button"
-              className="btn"
-              onClick={() => onNavigate('routes')}
-              style={{
-                padding: '6px 12px',
-                fontSize: 'var(--text-xs)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              View Route Library & Cues
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 4 CORE ATHLETE TELEMETRY TILES */}
+      {/* 6 UNIFIED ATHLETE TELEMETRY TILES */}
       <StatGrid min={140}>
-        {/* METRIC 2: Training Stress Balance (TSB / Form) */}
+        {/* TILE 1: Training Stress Balance (TSB / Form) */}
         <div
           className="card"
           style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}
@@ -470,20 +440,16 @@ export default function DashboardScreen({
                       : 'var(--color-accent)',
             }}
           >
-            {/* An em dash, not 0.0. A form balance of zero is a real state —
-                fitness exactly matching fatigue — and showing it for an
-                account with no rides claims a measurement that was never
-                taken. */}
             {latestPmc ? (latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb) : '—'}
           </span>
           <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
             {latestPmc
               ? `Fitness ${latestPmc.ctl} · Fatigue ${latestPmc.atl}`
-              : 'Log a ride to start building this'}
+              : 'Log a ride to build'}
           </span>
         </div>
 
-        {/* METRIC 3: Autonomic Balance (Resting HR & HRV) */}
+        {/* TILE 2: Autonomic Balance (Resting HR & HRV) */}
         <div
           className="card"
           style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}
@@ -497,7 +463,7 @@ export default function DashboardScreen({
                 textTransform: 'uppercase',
               }}
             >
-              Resting Heart Rate
+              Resting HR & HRV
             </span>
             <Heart size={14} color="var(--color-accent)" />
           </div>
@@ -521,7 +487,7 @@ export default function DashboardScreen({
           </span>
         </div>
 
-        {/* METRIC 4: Aerobic Efficiency (Cardiac Cost per Mile) */}
+        {/* TILE 3: Aerobic Efficiency (Cardiac Cost per Mile) */}
         <div
           className="card"
           style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}
@@ -567,7 +533,7 @@ export default function DashboardScreen({
           </span>
         </div>
 
-        {/* METRIC 5: Weekly Volume & Training Load */}
+        {/* TILE 4: Weekly Volume & Training Load */}
         <div
           className="card"
           style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}
@@ -581,7 +547,7 @@ export default function DashboardScreen({
                 textTransform: 'uppercase',
               }}
             >
-              This Week's Volume
+              Week Volume
             </span>
             <Bike size={14} color="var(--zone-4)" />
           </div>
@@ -603,157 +569,135 @@ export default function DashboardScreen({
             {formatDuration(currentWeekRollup.durationMin)} · Load {currentWeekRollup.load}
           </span>
         </div>
-      </StatGrid>
 
-      {/* SECTION: Workload & Periodization Radar (ACWR + Monotony + Polarized Audit) */}
-      {(currentAcwr || currentMonotony || polarizedRecentAudit) && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Gauge size={16} color="var(--color-accent)" />
+        {/* TILE 5: ACWR (Gabbett Workload Safety) */}
+        <div
+          className="card"
+          style={{
+            padding: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            borderLeft: `3px solid ${
+              currentAcwr?.tone === 'good'
+                ? 'var(--status-success)'
+                : currentAcwr?.tone === 'warn'
+                  ? 'var(--status-warn)'
+                  : currentAcwr?.tone === 'bad'
+                    ? 'var(--status-error)'
+                    : 'var(--color-border)'
+            }`,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span
               style={{
                 color: 'var(--color-text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
                 textTransform: 'uppercase',
-                letterSpacing: '0.06em',
               }}
             >
-              Workload & Periodization Safety
+              ACWR (Gabbett)
             </span>
+            {currentAcwr && (
+              <FormStatusBadge status={currentAcwr.label} tone={currentAcwr.tone} />
+            )}
           </div>
-
-          <StatGrid min={140}>
-            {/* ACWR Card */}
-            <div
-              className="card"
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span
               style={{
-                padding: 14,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                borderLeft: `3px solid ${
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--text-2xl)',
+                color:
                   currentAcwr?.tone === 'good'
                     ? 'var(--status-success)'
                     : currentAcwr?.tone === 'warn'
                       ? 'var(--status-warn)'
                       : currentAcwr?.tone === 'bad'
                         ? 'var(--status-error)'
-                        : 'var(--color-border)'
-                }`,
+                        : 'var(--color-text)',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span
-                  style={{
-                    color: 'var(--color-text-muted)',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  ACWR (Gabbett)
-                </span>
-                {currentAcwr && (
-                  <FormStatusBadge status={currentAcwr.label} tone={currentAcwr.tone} />
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 'var(--text-2xl)',
-                    color:
-                      currentAcwr?.tone === 'good'
-                        ? 'var(--status-success)'
-                        : currentAcwr?.tone === 'warn'
-                          ? 'var(--status-warn)'
-                          : currentAcwr?.tone === 'bad'
-                            ? 'var(--status-error)'
-                            : 'var(--color-text)',
-                  }}
-                >
-                  {currentAcwr ? currentAcwr.ratio : '—'}
-                </span>
-                <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-                  ATL / CTL
-                </span>
-              </div>
-              <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
-                {currentAcwr ? currentAcwr.description : 'Awaiting load history'}
-              </span>
-            </div>
+              {currentAcwr ? currentAcwr.ratio : '—'}
+            </span>
+            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+              ATL / CTL
+            </span>
+          </div>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+            {currentAcwr ? currentAcwr.description : 'Awaiting load history'}
+          </span>
+        </div>
 
-            {/* Foster Monotony Card */}
-            <div
-              className="card"
+        {/* TILE 6: Foster Monotony & Strain */}
+        <div
+          className="card"
+          style={{
+            padding: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            borderLeft: `3px solid ${
+              currentMonotony?.tone === 'good'
+                ? 'var(--status-success)'
+                : currentMonotony?.tone === 'warn'
+                  ? 'var(--status-warn)'
+                  : currentMonotony?.tone === 'bad'
+                    ? 'var(--status-error)'
+                    : 'var(--color-border)'
+            }`,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span
               style={{
-                padding: 14,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                borderLeft: `3px solid ${
+                color: 'var(--color-text-muted)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+              }}
+            >
+              Monotony & Strain
+            </span>
+            {currentMonotony && (
+              <FormStatusBadge status={currentMonotony.label} tone={currentMonotony.tone} />
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--text-2xl)',
+                color:
                   currentMonotony?.tone === 'good'
                     ? 'var(--status-success)'
                     : currentMonotony?.tone === 'warn'
                       ? 'var(--status-warn)'
                       : currentMonotony?.tone === 'bad'
                         ? 'var(--status-error)'
-                        : 'var(--color-border)'
-                }`,
+                        : 'var(--color-text)',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span
-                  style={{
-                    color: 'var(--color-text-muted)',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Monotony & Strain
-                </span>
-                {currentMonotony && (
-                  <FormStatusBadge status={currentMonotony.label} tone={currentMonotony.tone} />
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 'var(--text-2xl)',
-                    color:
-                      currentMonotony?.tone === 'good'
-                        ? 'var(--status-success)'
-                        : currentMonotony?.tone === 'warn'
-                          ? 'var(--status-warn)'
-                          : currentMonotony?.tone === 'bad'
-                            ? 'var(--status-error)'
-                            : 'var(--color-text)',
-                  }}
-                >
-                  {currentMonotony ? currentMonotony.monotony : '—'}
-                </span>
-                <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-                  {currentMonotony ? `Strain: ${currentMonotony.strain}` : ''}
-                </span>
-              </div>
-              <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
-                {currentMonotony ? currentMonotony.description : '7-day load variance index'}
-              </span>
-            </div>
-          </StatGrid>
-
-          {/* Polarized Training 80/20 Distribution Gauge */}
-          {polarizedRecentAudit && (
-            <PolarizedGauge
-              audit={polarizedRecentAudit}
-              title="Polarized 80/20 Intensity Audit"
-              subtitle="Recent Rides with Continuous Heart Rate"
-            />
-          )}
+              {currentMonotony ? currentMonotony.monotony : '—'}
+            </span>
+            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+              {currentMonotony ? `Strain ${currentMonotony.strain}` : ''}
+            </span>
+          </div>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+            {currentMonotony ? currentMonotony.description : '7-day load variance'}
+          </span>
         </div>
+      </StatGrid>
+
+      {/* Polarized Training 80/20 Distribution Gauge */}
+      {polarizedRecentAudit && (
+        <PolarizedGauge
+          audit={polarizedRecentAudit}
+          title="Polarized 80/20 Intensity Audit"
+          subtitle="Recent Rides with Continuous Heart Rate"
+        />
       )}
 
       {/* QUICK STATUS & LAST RIDE INSIGHT */}

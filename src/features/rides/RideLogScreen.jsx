@@ -11,6 +11,7 @@ import RecordRide from './RecordRide.jsx'
 import RouteMap from './RouteMap.jsx'
 import ElevationProfile from './ElevationProfile.jsx'
 import { parseGpx } from '../../data/gpx.js'
+import { fireConfetti } from '../../components/confetti.js'
 
 /**
  * The ride log: every ride, newest first, grouped by training week.
@@ -23,31 +24,49 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
   const [mode, setMode] = useState('list') // list | form | record
   const [editing, setEditing] = useState(null)
   const [prefill, setPrefill] = useState(null)
+  const [categoryFilter, setCategoryFilter] = useState('all') // all | weekday | weekend
   const fileInputRef = useRef(null)
 
-  const totals = useMemo(() => summarize(rides), [rides])
+  const filteredRides = useMemo(() => {
+    if (categoryFilter === 'weekday') {
+      return rides.filter((r) => {
+        const dist = Number(r.distance_mi) || 0
+        return dist >= 6 && dist <= 14.5
+      })
+    }
+    if (categoryFilter === 'weekend') {
+      return rides.filter((r) => {
+        const dist = Number(r.distance_mi) || 0
+        return dist > 14.5
+      })
+    }
+    return rides
+  }, [rides, categoryFilter])
+
+  const totals = useMemo(() => summarize(filteredRides), [filteredRides])
   // Summed from the healed per-ride value, so the headline total and the
   // individual cards can never disagree.
   const totalClimbFt = useMemo(
-    () => rides.reduce((sum, r) => sum + (rideClimbFeet(r) ?? 0), 0),
-    [rides],
+    () => filteredRides.reduce((sum, r) => sum + (rideClimbFeet(r) ?? 0), 0),
+    [filteredRides],
   )
 
   const weeks = useMemo(() => {
     const grouped = new Map()
-    for (const ride of rides) {
+    for (const ride of filteredRides) {
       const week = startOfWeek(recordDate(ride))
       if (!grouped.has(week)) grouped.set(week, [])
       grouped.get(week).push(ride)
     }
     // Newest week first, matching the newest-first ride order from the store.
     return [...grouped.entries()].sort((a, b) => b[0].localeCompare(a[0]))
-  }, [rides])
+  }, [filteredRides])
 
   async function handleSave(record) {
     const { synced } = await saveRow(TABLES.rides, record)
     setPending(queueLength())
     showToast(synced ? 'Ride saved' : 'Saved on device — will sync when back online')
+    fireConfetti({ particleCount: 40 })
     setMode('list')
     setEditing(null)
     setPrefill(null)
@@ -108,10 +127,11 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
         track: parsed.track,
       })
       setMode('form')
+      fireConfetti({ particleCount: 55 })
       showToast(
         parsed.hasHeartRate
-          ? `Imported ${parsed.distanceMi} mi with heart rate`
-          : `Imported ${parsed.distanceMi} mi — add RPE and heart rate`,
+          ? `Imported ${parsed.distanceMi} mi with heart rate!`
+          : `Imported ${parsed.distanceMi} mi — add RPE and route`,
       )
     } catch (error) {
       showToast(String(error.message ?? error), 'error')
@@ -181,6 +201,7 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
             className="btn"
             onClick={() => fileInputRef.current?.click()}
             aria-label="Import a GPX file"
+            title="Import GPX"
           >
             <Upload size={18} aria-hidden="true" />
           </button>
@@ -198,6 +219,75 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
             <Plus size={18} aria-hidden="true" /> Log
           </button>
         </div>
+      </div>
+
+      {/* 1-TAP HERO GPX IMPORT DROPZONE */}
+      <div
+        className="gpx-hero-dropzone"
+        onClick={() => fileInputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: 'rgba(34, 211, 238, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--color-accent)',
+            }}
+          >
+            <Upload size={18} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
+              1-Tap GPX Import
+            </div>
+            <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+              From Apple Watch, Garmin, Wahoo, or Strava
+            </div>
+          </div>
+        </div>
+        <span
+          style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 700,
+            color: 'var(--color-accent)',
+            textTransform: 'uppercase',
+          }}
+        >
+          Select File →
+        </span>
+      </div>
+
+      {/* CATEGORY FILTER CHIPS */}
+      <div className="filter-chips">
+        <button
+          type="button"
+          className={`filter-chip ${categoryFilter === 'all' ? 'active' : ''}`}
+          onClick={() => setCategoryFilter('all')}
+        >
+          All ({rides.length})
+        </button>
+        <button
+          type="button"
+          className={`filter-chip ${categoryFilter === 'weekday' ? 'active' : ''}`}
+          onClick={() => setCategoryFilter('weekday')}
+        >
+          🎯 Weekday Benchmarks (10–14 mi)
+        </button>
+        <button
+          type="button"
+          className={`filter-chip ${categoryFilter === 'weekend' ? 'active' : ''}`}
+          onClick={() => setCategoryFilter('weekend')}
+        >
+          🌲 Weekend Adventures (15+ mi)
+        </button>
       </div>
 
       <StatGrid>

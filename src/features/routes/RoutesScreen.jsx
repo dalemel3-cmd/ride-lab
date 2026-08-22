@@ -44,10 +44,27 @@ export default function RoutesScreen({
 }) {
   const [showForm, setShowForm] = useState(false)
   const [expandedCues, setExpandedCues] = useState({})
+  const [categoryFilter, setCategoryFilter] = useState('all') // all | weekday | weekend
 
   const toggleCues = (id) => {
     setExpandedCues((prev) => ({ ...prev, [id]: !prev[id] }))
   }
+
+  const filteredRoutes = useMemo(() => {
+    if (categoryFilter === 'weekday') {
+      return routes.filter((r) => {
+        const dist = Number(r.distance_mi) || 0
+        return dist >= 6 && dist <= 14.5
+      })
+    }
+    if (categoryFilter === 'weekend') {
+      return routes.filter((r) => {
+        const dist = Number(r.distance_mi) || 0
+        return dist > 14.5
+      })
+    }
+    return routes
+  }, [routes, categoryFilter])
 
   // Match rides to routes by name — the ride form writes a free-text
   // `route_name`, so a route can be typed in without existing in the library.
@@ -126,17 +143,42 @@ ${trkpts}
         </button>
       </div>
 
+      {/* CATEGORY FILTER CHIPS */}
+      <div className="filter-chips">
+        <button
+          type="button"
+          className={`filter-chip ${categoryFilter === 'all' ? 'active' : ''}`}
+          onClick={() => setCategoryFilter('all')}
+        >
+          All ({routes.length})
+        </button>
+        <button
+          type="button"
+          className={`filter-chip ${categoryFilter === 'weekday' ? 'active' : ''}`}
+          onClick={() => setCategoryFilter('weekday')}
+        >
+          🎯 Weekday Benchmarks (10–14 mi)
+        </button>
+        <button
+          type="button"
+          className={`filter-chip ${categoryFilter === 'weekend' ? 'active' : ''}`}
+          onClick={() => setCategoryFilter('weekend')}
+        >
+          🌲 Weekend Adventures (15+ mi)
+        </button>
+      </div>
+
       {showForm && <RouteForm onSave={handleSave} onCancel={() => setShowForm(false)} />}
 
       {/* GPS-matched repeat efforts. Sits above the library because it needs no
           upkeep — segments appear on their own as tracked rides accumulate. */}
       <SegmentsCard rides={rides} maxHr={settings?.maxHr} />
 
-      {routes.length === 0 && !showForm && (
-        <EmptyState>No routes yet. Add the trails you ride most.</EmptyState>
+      {filteredRoutes.length === 0 && !showForm && (
+        <EmptyState>No routes match this filter. Add the trails you ride most.</EmptyState>
       )}
 
-      {routes.map((route) => {
+      {filteredRoutes.map((route) => {
         const routeRides = statsByRoute.get(route.name.toLowerCase()) ?? []
         // Oldest first, so "first vs. best" reads as progress.
         const chronological = [...routeRides].sort((a, b) =>
