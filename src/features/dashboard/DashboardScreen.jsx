@@ -294,10 +294,16 @@ export default function DashboardScreen({
                       : 'var(--color-accent)',
             }}
           >
-            {latestPmc ? (latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb) : '0.0'}
+            {/* An em dash, not 0.0. A form balance of zero is a real state —
+                fitness exactly matching fatigue — and showing it for an
+                account with no rides claims a measurement that was never
+                taken. */}
+            {latestPmc ? (latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb) : '—'}
           </span>
           <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-            Fitness {latestPmc?.ctl ?? 0} · Fatigue {latestPmc?.atl ?? 0}
+            {latestPmc
+              ? `Fitness ${latestPmc.ctl} · Fatigue ${latestPmc.atl}`
+              : 'Log a ride to start building this'}
           </span>
         </div>
 

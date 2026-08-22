@@ -31,6 +31,8 @@ import {
   hrvAutonomicBands,
   dailyReadiness,
   substrateOxidation,
+  timeInZones,
+  combineZoneTimes,
 } from '../src/data/metrics.js'
 import {
   startOfWeek,
@@ -309,6 +311,43 @@ check('calculates caloric and fat/carb breakdown', subZone2 !== null, true)
 check('Zone 2 burns predominantly fat (>50%)', subZone2.fatPercentage >= 60, true)
 check('missing HR yields null', substrateOxidation(null, 60, 190), null)
 
+
+
+console.log('\nTime in heart-rate zones')
+// A track at a steady 130 bpm against a 190 max sits at 68% — Zone 2.
+const zoneTrack = []
+for (let s = 0; s <= 60; s += 1) zoneTrack.push([36.37, -94.2, 1_700_000_000_000 + s * 1000, null, 130])
+const zoneDist = timeInZones(zoneTrack, 190)
+check('a steady ride lands in one zone', zoneDist.find((z) => z.percent === 100)?.zone, 2)
+check('and the seconds are the ride length', zoneDist[1].seconds, 60)
+
+// Half easy, half hard: the average would read as a moderate ride that never
+// happened. The distribution is what tells them apart.
+const splitTrack = []
+for (let s = 0; s < 60; s += 1) splitTrack.push([36.37, -94.2, 1_700_000_000_000 + s * 1000, null, 110])
+for (let s = 60; s <= 120; s += 1) splitTrack.push([36.37, -94.2, 1_700_000_000_000 + s * 1000, null, 180])
+const split = timeInZones(splitTrack, 190)
+check('a polarized ride shows both ends', [split[0].percent > 0, split[4].percent > 0], [true, true])
+check('and nothing in the middle', split[2].percent, 0)
+
+console.log('\nZone time refuses to invent')
+check('no heart rate yields null, not five zeroes', timeInZones([[36.37, -94.2, 1, null, null], [36.37, -94.2, 2, null, null]], 190), null)
+check('no max HR yields null', timeInZones(zoneTrack, null), null)
+check('an empty track yields null', timeInZones([], 190), null)
+// A long gap is a coffee stop, not an hour at the last-known heart rate.
+const gapped = [
+  [36.37, -94.2, 1_700_000_000_000, null, 140],
+  [36.37, -94.2, 1_700_000_000_000 + 600_000, null, 140],
+  [36.37, -94.2, 1_700_000_000_000 + 601_000, null, 140],
+]
+check('a ten-minute gap is not counted as riding', timeInZones(gapped, 190)[2].seconds, 1)
+
+console.log('\nCombining zone times across rides')
+const combined = combineZoneTimes([timeInZones(zoneTrack, 190), timeInZones(zoneTrack, 190)])
+check('two identical rides double the seconds', combined[1].seconds, 120)
+check('and the split is unchanged', combined[1].percent, 100)
+check('nothing to combine is null', combineZoneTimes([]), null)
+check('nulls are ignored, not counted', combineZoneTimes([null, timeInZones(zoneTrack, 190)])[1].seconds, 60)
+
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)
-

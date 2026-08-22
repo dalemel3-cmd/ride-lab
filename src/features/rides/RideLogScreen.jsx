@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { Plus, Satellite, Trash2, Pencil, Upload } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
-import { avgSpeed, trainingLoad, hrZone, summarize } from '../../data/metrics.js'
+import { avgSpeed, trainingLoad, hrZone, summarize, timeInZones } from '../../data/metrics.js'
 import { formatDuration, formatShortDate, toDateString, toTimeString, startOfWeek, recordDate } from '../../data/dates.js'
 import { StatGrid, StatTile, EmptyState } from '../../components/ui.jsx'
+import ZoneBar from '../../components/ZoneBar.jsx'
+import { elevationGainMeters, METERS_TO_FEET } from '../../data/track.js'
 import RideForm from './RideForm.jsx'
 import RecordRide from './RecordRide.jsx'
 import RouteMap from './RouteMap.jsx'
@@ -250,6 +252,21 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
 }
 
 function RideCard({ ride, settings, onEdit, onDelete }) {
+  // Null unless the track carries per-point heart rate, which is only true for
+  // rides recorded with a strap or imported from a file that had it.
+  const zones = useMemo(
+    () => timeInZones(ride.track, settings.maxHr),
+    [ride.track, settings.maxHr],
+  )
+  // Prefer the recorded column, but fall back to the track's own elevation.
+  // Showing an em dash beside a profile that visibly climbs 200 ft is asking
+  // the rider for a number the app is already holding.
+  const climbFt = useMemo(() => {
+    if (ride.elevation_ft != null && ride.elevation_ft !== '') return Number(ride.elevation_ft)
+    const metres = elevationGainMeters(ride.track)
+    return metres === null ? null : Math.round(metres * METERS_TO_FEET)
+  }, [ride.elevation_ft, ride.track])
+
   const speed = avgSpeed(ride.distance_mi, ride.duration_min)
   const load = trainingLoad(ride.rpe, ride.duration_min)
   const zone = hrZone(ride.avg_hr, settings.maxHr)
@@ -296,6 +313,9 @@ function RideCard({ ride, settings, onEdit, onDelete }) {
         </button>
       </div>
 
+      {/* Renders itself away unless the track carries per-point heart rate. */}
+      {zones && <ZoneBar distribution={zones} />}
+
       {ride.track && <RouteMap track={ride.track} height={120} />}
       {/* Renders itself away on rides with no elevation, so older tracks and
           hand-entered rides are unaffected. */}
@@ -312,7 +332,7 @@ function RideCard({ ride, settings, onEdit, onDelete }) {
         <Metric label="Distance" value={ride.distance_mi != null ? `${ride.distance_mi} mi` : '—'} />
         <Metric label="Time" value={ride.duration_min ? formatDuration(ride.duration_min) : '—'} />
         <Metric label="Speed" value={speed ? `${speed.toFixed(1)} mph` : '—'} />
-        <Metric label="Climb" value={ride.elevation_ft != null ? `${ride.elevation_ft} ft` : '—'} />
+        <Metric label="Climb" value={climbFt != null ? `${climbFt.toLocaleString()} ft` : '—'} />
         <Metric label="Avg HR" value={ride.avg_hr ? `${ride.avg_hr}` : '—'} color={zone?.color} />
         <Metric label="RPE" value={ride.rpe ?? '—'} />
         <Metric label="Load" value={load ?? '—'} />

@@ -24,6 +24,8 @@ import {
   hrvAutonomicBands,
   dailyReadiness,
   substrateOxidation,
+  timeInZones,
+  combineZoneTimes,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
@@ -34,6 +36,7 @@ import {
   recordDate,
 } from '../../data/dates.js'
 import { StatGrid, StatTile, ScienceNote, EmptyState, ReadinessDial, FormStatusBadge } from '../../components/ui.jsx'
+import ZoneBar from '../../components/ZoneBar.jsx'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
 
@@ -96,6 +99,21 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
       }),
     [latestBody, baselineBody, latestHrvBand, latestPmc],
   )
+
+  // Intensity distribution across every ride whose track carries heart rate.
+  const studyZones = useMemo(
+    () => combineZoneTimes(rides.map((r) => timeInZones(r.track, settings.maxHr))),
+    [rides, settings.maxHr],
+  )
+
+  const pct = (zoneNumbers) =>
+    (studyZones ?? [])
+      .filter((z) => zoneNumbers.includes(z.zone))
+      .reduce((sum, z) => sum + z.percent, 0)
+
+  const easyPercent = pct([1, 2])
+  const moderatePercent = pct([3])
+  const hardPercent = pct([4, 5])
 
   // Total Estimated Substrate Oxidation
   const substrateTotals = useMemo(() => {
@@ -178,7 +196,7 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
         ? `- **Fitness (CTL - 42d):** ${latestPmc.ctl}\n- **Fatigue (ATL - 7d):** ${latestPmc.atl}\n- **Form (TSB):** ${latestPmc.tsb} (${latestPmc.status})`
         : `- No load history available.`,
       latestBody
-        ? `- **Current Resting HR:** ${latestBody.resting_hr ?? '—'} bpm\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms ?? '—'} ms\n- **Autonomic Status:** ${latestHrvBand?.autonomicState ?? 'Normal'}`
+        ? `- **Current Resting HR:** ${latestBody.resting_hr ?? '—'} bpm\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms ?? '—'} ms\n- **Autonomic Status:** ${latestHrvBand?.autonomicState ?? 'Not measured'}`
         : ``,
       ``,
       `## 4. Repeated Route Progress (Identical Course Control)`,
@@ -233,6 +251,32 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
 
       {/* Cyber-Athletic Readiness & Recovery HUD */}
       <ReadinessDial readiness={readiness} />
+
+      {/* Intensity distribution across the whole study. Only appears once some
+          ride carries per-point heart rate — there is nothing to distribute
+          otherwise, and five empty bars would imply a measurement. */}
+      {studyZones && (
+        <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h3 style={{ fontSize: 'var(--text-base)', margin: 0 }}>Where the hours went</h3>
+          <ZoneBar distribution={studyZones} height={14} />
+          <ScienceNote title="The 80/20 question">
+            Endurance research keeps landing on the same distribution: roughly{' '}
+            <strong>80% of training time easy</strong> (Zones 1–2) and 20% genuinely hard (Zones
+            4–5), with little in between. The trap is that riders consistently believe they train
+            easier than they do — the easy days creep up into Zone 3, which is tiring enough to
+            cost recovery but not hard enough to drive adaptation.
+            <br />
+            <br />
+            Yours is <strong>{easyPercent}% easy</strong>, {moderatePercent}% moderate, and{' '}
+            {hardPercent}% hard.{' '}
+            {moderatePercent > 35
+              ? 'That is a lot of Zone 3 — the classic pattern of riding the easy days too hard and the hard days too easy.'
+              : easyPercent >= 75
+                ? 'That is a well-polarized distribution: the easy days are genuinely easy, which is what makes the hard days possible.'
+                : 'Building more Zone 1–2 volume would move this toward the polarized pattern most endurance research supports.'}
+          </ScienceNote>
+        </section>
+      )}
 
       {/* Study progress bar */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

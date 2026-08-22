@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Play, Pause, Square, Satellite, HeartPulse, Mountain, Gauge } from 'lucide-react'
-import { trackDistanceMiles, hrZone } from '../../data/metrics.js'
+import { hrZone } from '../../data/metrics.js'
 import { formatStopwatch } from '../../data/dates.js'
 import { METERS_TO_FEET } from '../../data/track.js'
 import {
   currentSpeedMph,
   shouldAutoPause,
   climbSoFarMeters,
+  movingDistanceMiles,
   AUTO_PAUSE_MPH,
 } from '../../data/recording.js'
-import { isSupported as bluetoothSupported, connectHeartRate } from '../../data/heartRateSensor.js'
+import {
+  isSupported as bluetoothSupported,
+  connectHeartRate,
+  readBatteryLevel,
+} from '../../data/heartRateSensor.js'
 import RouteMap from './RouteMap.jsx'
 
 /**
@@ -34,10 +39,13 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
   // Auto-pause is separate from a manual pause: it has to keep watching GPS to
   // notice the rider moving again, where a manual pause deliberately stops.
   const [autoPaused, setAutoPaused] = useState(false)
+  const autoPausedRef = useRef(false)
 
   const [heartRate, setHeartRate] = useState(null)
   const [strap, setStrap] = useState(null)
-  const [strapStatus, setStrapStatus] = useState('idle') // idle | connecting | connected | dropped
+  // idle | connecting | connected | reconnecting | lost
+  const [strapStatus, setStrapStatus] = useState('idle')
+  const [strapBattery, setStrapBattery] = useState(null)
 
   // Latest reading, read inside the geolocation callback. State would be stale
   // there — the callback closes over the value from the render that registered
@@ -52,7 +60,9 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
   const startedAtRef = useRef(null)
   const accumulatedRef = useRef(0)
 
-  const distanceMi = trackDistanceMiles(track)
+  // Moving distance, not raw track distance: a stationary phone wanders a few
+  // metres between fixes, and counting that turns every stop into real mileage.
+  const distanceMi = useMemo(() => movingDistanceMiles(track), [track])
 
   const liveSpeed = useMemo(() => currentSpeedMph(track), [track])
   const climbM = useMemo(() => climbSoFarMeters(track), [track])
@@ -164,17 +174,21 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
           setHeartRate(bpm)
         },
         onStatus: (status) => {
-          setStrapStatus(status === 'connected' ? 'connected' : 'dropped')
-          // A stale number looks live and is worse than none, so the reading is
-          // cleared the moment the link drops.
-          if (status !== 'connected') {
-            heartRateRef.current = null
-            setHeartRate(null)
+          if (status === 'connected') {
+            setStrapStatus('connected')
+            return
           }
+          // A stale number looks live and is worse than none, so the reading is
+          // cleared the moment the link drops. 'lost' means the automatic
+          // retries gave up — the rider has to do something about it.
+          heartRateRef.current = null
+          setHeartRate(null)
+          setStrapStatus(status === 'lost' ? 'lost' : 'reconnecting')
         },
       })
       setStrap(handle)
       setStrapStatus('connected')
+      readBatteryLevel(handle.device).then(setStrapBattery)
     } catch (err) {
       setStrapStatus('idle')
       setError(err.message)
@@ -185,6 +199,7 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
     await strap?.disconnect().catch(() => {})
     setStrap(null)
     setStrapStatus('idle')
+    setStrapBattery(null)
     heartRateRef.current = null
     setHeartRate(null)
   }
@@ -197,18 +212,51 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
     }
   }, [strap])
 
-  const stopWatching = useCallback(() => {
+  const clearGeoWatch = useCallback(() => {
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current)
       watchIdRef.current = null
     }
+  }, [])
+
+  const stopWatching = useCallback(() => {
+    clearGeoWatch()
     if (wakeLockRef.current) {
       wakeLockRef.current.release().catch(() => {})
       wakeLockRef.current = null
     }
-  }, [])
+  }, [clearGeoWatch])
 
   useEffect(() => stopWatching, [stopWatching])
+
+  /**
+   * Auto-pause, decided from the points already recorded.
+   *
+   * This has to live in an effect rather than inside the `setTrack` updater.
+   * React invokes updater functions twice under StrictMode to surface impure
+   * ones, so adjusting the clock in there banked the elapsed time twice on
+   * every transition and made moving time run fast. Updaters must be pure;
+   * this is the side effect they were hiding.
+   *
+   * The ref guard makes the effect idempotent, which matters for the same
+   * reason — StrictMode runs effects twice on mount.
+   */
+  useEffect(() => {
+    if (state !== 'recording') return
+
+    const stopped = shouldAutoPause(track)
+    if (stopped === autoPausedRef.current) return
+
+    autoPausedRef.current = stopped
+    if (stopped) {
+      // Bank the time ridden so far, then stop the clock.
+      accumulatedRef.current = elapsedFrom()
+      startedAtRef.current = null
+    } else {
+      startedAtRef.current = Date.now()
+    }
+    setAutoPaused(stopped)
+  }, [track, state, elapsedFrom])
 
   // Re-take the wake lock whenever the tab comes back to the foreground while
   // recording. Browsers release it on every backgrounding — checking the map,
@@ -218,11 +266,22 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
     if (state !== 'recording') return
 
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') acquireWakeLock()
+      if (document.visibilityState !== 'visible') return
+      acquireWakeLock()
+
+      // Re-arm the GPS watch as well. A backgrounded tab has its geolocation
+      // watch throttled or suspended, and browsers do not reliably resume it —
+      // so checking a map, taking a call, or letting the screen lock would
+      // silently end the track while the UI went on claiming to record. This
+      // is the difference between a ride that logs and one that quietly stops
+      // at the first interruption.
+      clearGeoWatch()
+      startWatchingRef.current?.()
     }
+
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [state, acquireWakeLock])
+  }, [state, acquireWakeLock, clearGeoWatch])
 
   const startWatching = useCallback(() => {
     if (!('geolocation' in navigator)) {
@@ -263,22 +322,6 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
             ...prev,
             [latitude, longitude, position.timestamp, elevationM, heartRateRef.current],
           ]
-
-          // Auto-pause runs off the same points that drive the display, so the
-          // clock and the map can never disagree about whether the rider moved.
-          const stopped = shouldAutoPause(next)
-          setAutoPaused((wasPaused) => {
-            if (stopped === wasPaused) return wasPaused
-            if (stopped) {
-              // Freeze the clock: bank the time ridden so far and stop counting.
-              accumulatedRef.current += Date.now() - (startedAtRef.current ?? Date.now())
-              startedAtRef.current = null
-            } else {
-              startedAtRef.current = Date.now()
-            }
-            return stopped
-          })
-
           persistDraft(next, elapsedFrom())
           return next
         })
@@ -293,7 +336,12 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
     )
     return true
-  }, [persistDraft])
+  }, [persistDraft, elapsedFrom])
+
+  // The visibility handler is declared above startWatching, so it reaches it
+  // through a ref rather than forcing the two into a circular dependency.
+  const startWatchingRef = useRef(null)
+  startWatchingRef.current = startWatching
 
   async function handleStart() {
     setError(null)
@@ -309,6 +357,7 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
     startedAtRef.current = null
     setElapsedMs(accumulatedRef.current)
     stopWatching()
+    autoPausedRef.current = false
     setAutoPaused(false)
     setState('paused')
   }
@@ -331,7 +380,7 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
 
     onFinish({
       track,
-      distanceMi: Math.round(trackDistanceMiles(track) * 100) / 100,
+      distanceMi: Math.round(distanceMi * 100) / 100,
       durationMin: Math.round((finalElapsed / 60000) * 10) / 10,
       // Pre-fills the form so the rider is not retyping what the strap already
       // measured. RPE is deliberately left blank — no sensor knows how hard it
@@ -438,9 +487,12 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
       {/* Secondary readouts. Each hides itself rather than showing a zero,
           because "0 mph" and "0 ft" read as measurements when they are really
           "not known yet". */}
-      {(liveSpeed !== null || climbM !== null) && (
+      {((liveSpeed !== null && !autoPaused) || climbM !== null) && (
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          {liveSpeed !== null && (
+          {/* Hidden while auto-paused: a stationary phone's fixes zigzag, so
+              the path-based figure reads as a brisk pace beside a "paused"
+              badge, which just looks broken. */}
+          {liveSpeed !== null && !autoPaused && (
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-sm)' }}>
               <Gauge size={16} color="var(--color-accent)" aria-hidden="true" />
               {liveSpeed.toFixed(1)} mph now
@@ -466,17 +518,35 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
       {/* Strap pairing. Offered whether or not recording has started, so the
           link can be established before rolling out. */}
       {bluetoothSupported() ? (
-        strapStatus === 'connected' ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-sm)' }}>
-            <HeartPulse size={16} color="var(--status-success)" aria-hidden="true" />
-            <span className="muted">{strap?.deviceName ?? 'Strap'} connected</span>
-            <button
-              className="btn"
-              style={{ marginLeft: 'auto', padding: '6px 10px', minHeight: 'var(--tap-target)' }}
-              onClick={handleDisconnectStrap}
-            >
-              Disconnect
-            </button>
+        strapStatus === 'connected' || strapStatus === 'reconnecting' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-sm)' }}>
+              <HeartPulse
+                size={16}
+                color={strapStatus === 'connected' ? 'var(--status-success)' : 'var(--status-warn)'}
+                aria-hidden="true"
+              />
+              <span className="muted">
+                {strap?.deviceName ?? 'Strap'}{' '}
+                {strapStatus === 'connected' ? 'connected' : 'reconnecting…'}
+                {strapBattery != null && ` · ${strapBattery}%`}
+              </span>
+              <button
+                className="btn"
+                style={{ marginLeft: 'auto', padding: '6px 10px', minHeight: 'var(--tap-target)' }}
+                onClick={handleDisconnectStrap}
+              >
+                Disconnect
+              </button>
+            </div>
+            {strapBattery != null && strapBattery <= 15 && (
+              // Worth flagging before a long ride: a strap that dies halfway
+              // leaves a trace that stops mid-ride, which is the kind of gap
+              // that quietly ruins a comparison months later.
+              <p className="muted" style={{ margin: 0, color: 'var(--status-warn)' }}>
+                Strap battery is at {strapBattery}%. Worth a fresh cell before a long ride.
+              </p>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -484,14 +554,21 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
               <HeartPulse size={18} aria-hidden="true" />
               {strapStatus === 'connecting'
                 ? 'Searching…'
-                : strapStatus === 'dropped'
+                : strapStatus === 'lost'
                   ? 'Reconnect heart-rate strap'
                   : 'Connect heart-rate strap'}
             </button>
-            {strapStatus === 'dropped' && (
+            {strapStatus === 'lost' && (
               <p className="muted" style={{ margin: 0, color: 'var(--status-warn)' }}>
-                The strap disconnected. Recording continues — points from here on carry no heart
-                rate until it reconnects.
+                The strap stopped responding and automatic reconnects gave up. Recording continues —
+                points from here on carry no heart rate. Check the electrodes are damp and the
+                battery is good.
+              </p>
+            )}
+            {strapStatus === 'idle' && (
+              <p className="muted" style={{ margin: 0, fontSize: 'var(--text-xs)' }}>
+                Polar H10: wet the electrodes before pairing, and close Polar Flow or any watch
+                holding the strap — it will not appear in the list while another app has it.
               </p>
             )}
           </div>

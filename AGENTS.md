@@ -55,6 +55,24 @@ arithmetic. Always read through the accessors in `src/data/track.js`; never
 index a track directly. Elevation is stored in **metres** (GPX's native unit)
 and converted to feet only for display.
 
+**Never put a side effect in a state updater.** React invokes updater functions
+twice under StrictMode to surface impure ones. Auto-pause adjusted the clock
+inside `setTrack`'s updater, so every transition banked the elapsed time twice
+and moving time ran fast. Side effects belong in an effect, guarded by a ref so
+they stay idempotent — StrictMode runs effects twice too.
+
+**GPS drift zigzags; judge movement by displacement.** A stationary phone
+produces fixes that wander several metres each way. Summed as *path length*
+that reads as a brisk 13 mph with the bike against a tree, so both
+`shouldAutoPause` and `movingDistanceMiles` measure straight-line displacement
+across a window instead. Tight switchbacks make that read slightly low for a
+moving rider, which is the right direction to be wrong.
+
+**A backgrounded tab loses its geolocation watch.** Browsers throttle or suspend
+it and do not reliably resume, so the visibility handler re-arms the watch as
+well as the wake lock. Without that, checking a map or letting the screen lock
+silently ended the track while the UI went on claiming to record.
+
 **Recording has two clocks and two pauses.** `elapsedFrom()` reports *moving*
 time: `startedAtRef` is null whenever the clock is frozen, so stopped time never
 accumulates. A manual pause stops the GPS watch; an auto-pause must not, because

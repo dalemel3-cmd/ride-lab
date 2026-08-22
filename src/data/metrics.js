@@ -52,6 +52,11 @@ export function predictedMaxHr(age) {
  * the app teach rather than just record — a number without meaning changes
  * nothing about how someone trains.
  */
+// Track tuple positions, mirrored from track.js. Kept as local constants so
+// metrics.js stays dependency-free and provably pure.
+const TRACK_TIME = 2
+const TRACK_HR = 4
+
 export const HR_ZONES = [
   {
     zone: 1,
@@ -239,6 +244,97 @@ export function beatsPerMile(avgHrValue, durationMin, distanceMi) {
   const d = toNumber(distanceMi)
   if (hr === null || t === null || d === null || hr <= 0 || t <= 0 || d <= 0) return null
   return Math.round((hr * t) / d)
+}
+
+/**
+ * Time spent in each heart-rate zone across a track, in seconds.
+ *
+ * The single most useful thing per-point heart rate unlocks. A ride's average
+ * heart rate hides its shape completely: 145 bpm average can be an hour of
+ * steady Zone 2, or half an hour of Zone 1 spliced with half an hour of Zone 4,
+ * and those two rides do entirely different things to a body. Only the
+ * distribution tells them apart.
+ *
+ * It is also what makes the study's central claim checkable. Polarized training
+ * says roughly 80% of time should sit easy and 20% hard, with little in the
+ * middle — and riders overwhelmingly believe they ride easier than they do.
+ * This measures it instead of asking.
+ *
+ * Returns null when the track carries no heart rate, rather than five zeroes
+ * that would read as "no time in any zone".
+ */
+export function timeInZones(track, maxHrValue) {
+  const max = toNumber(maxHrValue)
+  if (!Array.isArray(track) || track.length < 2 || max === null || max <= 0) return null
+
+  // A gap longer than this is a pause, a tunnel, or a dropped sensor — not time
+  // spent at the last-known heart rate. Counting it would attribute a coffee
+  // stop to whatever zone the rider was in when they stopped.
+  const MAX_GAP_SEC = 60
+
+  const seconds = new Map(HR_ZONES.map((z) => [z.zone, 0]))
+  let total = 0
+
+  for (let i = 1; i < track.length; i += 1) {
+    const from = track[i - 1]
+    const t1 = toNumber(from?.[TRACK_TIME])
+    const t2 = toNumber(track[i]?.[TRACK_TIME])
+    const hr = toNumber(from?.[TRACK_HR])
+
+    if (t1 === null || t2 === null || t1 <= 0 || t2 <= 0 || hr === null || hr <= 0) continue
+
+    const gap = (t2 - t1) / 1000
+    if (!(gap > 0) || gap > MAX_GAP_SEC) continue
+
+    const z = hrZone(hr, max)
+    if (!z) continue
+
+    seconds.set(z.zone, seconds.get(z.zone) + gap)
+    total += gap
+  }
+
+  if (total <= 0) return null
+
+  return HR_ZONES.map((z) => ({
+    zone: z.zone,
+    label: z.label,
+    color: z.color,
+    effect: z.effect,
+    seconds: Math.round(seconds.get(z.zone)),
+    percent: Math.round((seconds.get(z.zone) / total) * 100),
+  }))
+}
+
+/**
+ * Sum several zone distributions into one.
+ *
+ * Used to ask the polarization question across a whole study rather than a
+ * single ride, which is the timescale the 80/20 guideline actually describes.
+ */
+export function combineZoneTimes(distributions = []) {
+  const usable = distributions.filter(Array.isArray)
+  if (usable.length === 0) return null
+
+  const totals = new Map(HR_ZONES.map((z) => [z.zone, 0]))
+  let total = 0
+
+  for (const dist of usable) {
+    for (const entry of dist) {
+      totals.set(entry.zone, (totals.get(entry.zone) ?? 0) + entry.seconds)
+      total += entry.seconds
+    }
+  }
+
+  if (total <= 0) return null
+
+  return HR_ZONES.map((z) => ({
+    zone: z.zone,
+    label: z.label,
+    color: z.color,
+    effect: z.effect,
+    seconds: totals.get(z.zone),
+    percent: Math.round((totals.get(z.zone) / total) * 100),
+  }))
 }
 
 /**

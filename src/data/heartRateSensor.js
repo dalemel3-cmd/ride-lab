@@ -29,6 +29,10 @@ import { parseHeartRateMeasurement } from './recording.js'
 
 const HEART_RATE_SERVICE = 'heart_rate'
 const HEART_RATE_MEASUREMENT = 'heart_rate_measurement'
+const BATTERY_SERVICE = 'battery_service'
+
+/** How many times to chase a dropped strap before leaving it alone. */
+const MAX_RECONNECT_ATTEMPTS = 6
 
 /** Whether this browser can talk to a strap at all. */
 export function isSupported() {
@@ -56,19 +60,87 @@ export async function connectHeartRate({ onReading, onStatus } = {}) {
   let device
   try {
     device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [HEART_RATE_SERVICE] }],
+      // Matching on the advertised service is the correct primary filter, but
+      // it is not sufficient on its own. A strap already connected to another
+      // app — Polar Flow, a watch, Zwift — may advertise differently or not at
+      // all, and some firmware omits the service UUID from the advertising
+      // packet even though it implements the service. The name prefixes catch
+      // those, which is the difference between an empty chooser and a working
+      // strap.
+      filters: [
+        { services: [HEART_RATE_SERVICE] },
+        { namePrefix: 'Polar' },
+        { namePrefix: 'Garmin' },
+        { namePrefix: 'Wahoo' },
+        { namePrefix: 'TICKR' },
+        { namePrefix: 'COOSPO' },
+      ],
+      // Required: a device matched by name rather than by service is not
+      // granted access to that service unless it is declared here. Without
+      // this, a Polar H10 picked from the list connects and then throws
+      // SecurityError on getPrimaryService.
+      optionalServices: [HEART_RATE_SERVICE, BATTERY_SERVICE],
     })
   } catch (error) {
-    // Dismissing the chooser is a normal action, not a failure worth shouting
-    // about; anything else is worth surfacing.
-    if (error?.name === 'NotFoundError') throw new Error('No strap selected.')
-    throw new Error('Could not open the Bluetooth chooser. Make sure Bluetooth is on.')
+    // Cancelling and finding nothing both surface as NotFoundError, so the
+    // message has to cover the case where the chooser was simply empty.
+    if (error?.name === 'NotFoundError') {
+      throw new Error(
+        'No strap selected. If the list was empty: wet the electrodes so the strap wakes up, and close any other app connected to it — a Polar H10 will not appear here while Polar Flow, a watch, or Zwift holds it.',
+      )
+    }
+    if (error?.name === 'SecurityError') {
+      throw new Error('Bluetooth needs a secure connection. Open the app over https.')
+    }
+    throw new Error(
+      `Could not open the Bluetooth chooser (${error?.name ?? 'unknown error'}). Check that Bluetooth is on, and on Android that the browser has Location and Nearby devices permission.`,
+    )
   }
 
-  const characteristic = await openStream(device, onReading)
+  let characteristic
+  try {
+    characteristic = await openStream(device, onReading)
+  } catch (error) {
+    if (error?.name === 'NetworkError') {
+      throw new Error(
+        'The strap was found but would not connect. It is probably still paired to another app or device — disconnect it there and try again.',
+      )
+    }
+    throw new Error(`Could not read heart rate from the strap (${error?.name ?? 'unknown error'}).`)
+  }
+
+  // Straps drop out routinely mid-ride: sweat bridging the electrodes, a jersey
+  // shifting, a battery dip. Reconnecting automatically keeps the rest of the
+  // ride's heart rate instead of ending the stream at the first blip — over a
+  // two-hour ride that is the difference between one usable trace and several
+  // fragments. Attempts back off so a strap that has genuinely gone (battery
+  // dead, out of range) does not spin the radio for the rest of the ride.
+  let reconnectAttempts = 0
+  let reconnectTimer = null
+  let abandoned = false
+
+  const attemptReconnect = () => {
+    if (abandoned || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) onStatus?.('lost')
+      return
+    }
+    const delay = Math.min(30_000, 2 ** reconnectAttempts * 1000)
+    reconnectAttempts += 1
+    reconnectTimer = setTimeout(async () => {
+      if (abandoned) return
+      try {
+        characteristic = await openStream(device, onReading)
+        reconnectAttempts = 0
+        onStatus?.('connected')
+      } catch {
+        attemptReconnect()
+      }
+    }, delay)
+  }
 
   const handleDisconnect = () => {
     onStatus?.('disconnected')
+    attemptReconnect()
   }
   device.addEventListener('gattserverdisconnected', handleDisconnect)
 
@@ -76,18 +148,20 @@ export async function connectHeartRate({ onReading, onStatus } = {}) {
 
   return {
     deviceName: device.name || 'Heart-rate strap',
-    /**
-     * Attempt to re-establish a dropped link.
-     *
-     * Straps drop out routinely — sweat, a jersey pocket, a battery dip — and a
-     * ride is long. Reconnecting keeps the rest of the ride's heart rate rather
-     * than ending the stream at the first blip.
-     */
+    /** Exposed so the caller can read optional extras such as battery level. */
+    device,
+    /** Force a reconnect attempt now, ignoring the backoff. */
     async reconnect() {
-      await openStream(device, onReading)
+      abandoned = false
+      reconnectAttempts = 0
+      characteristic = await openStream(device, onReading)
       onStatus?.('connected')
     },
     async disconnect() {
+      // Stop the retry loop first, or a scheduled attempt reconnects a strap
+      // the rider just asked to release.
+      abandoned = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
       device.removeEventListener('gattserverdisconnected', handleDisconnect)
       try {
         await characteristic?.stopNotifications()
@@ -97,6 +171,27 @@ export async function connectHeartRate({ onReading, onStatus } = {}) {
       if (device.gatt?.connected) device.gatt.disconnect()
       onStatus?.('disconnected')
     },
+  }
+}
+
+/**
+ * Battery level, 0–100, or null when the strap does not expose it.
+ *
+ * Worth knowing before a long ride: a Polar H10 that dies mid-ride leaves a
+ * heart-rate trace that stops halfway, which is the kind of gap that quietly
+ * ruins a comparison months later.
+ */
+export async function readBatteryLevel(device) {
+  try {
+    const server = device.gatt?.connected ? device.gatt : await device.gatt.connect()
+    const service = await server.getPrimaryService(BATTERY_SERVICE)
+    const characteristic = await service.getCharacteristic('battery_level')
+    const value = await characteristic.readValue()
+    return value.getUint8(0)
+  } catch {
+    // Optional extra — never let a missing battery service break a connection
+    // that is otherwise streaming heart rate perfectly well.
+    return null
   }
 }
 

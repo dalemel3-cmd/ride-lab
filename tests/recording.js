@@ -14,6 +14,7 @@ import {
   currentSpeedMph,
   shouldAutoPause,
   climbSoFarMeters,
+  movingDistanceMiles,
   latestElevationMeters,
   AUTO_PAUSE_MPH,
 } from '../src/data/recording.js'
@@ -110,6 +111,62 @@ check('a slow climb is still riding', shouldAutoPause(movingTrack({ mph: 4, seco
 // silently drop the first minutes of every ride.
 check('an unknown speed does not pause', shouldAutoPause([]), false)
 check('a single point does not pause', shouldAutoPause([[LAT0, LON0, 1, null, null]]), false)
+
+console.log('\nMoving distance excludes drift while stopped')
+// A stationary phone wanders a few metres between fixes. Counting that turns a
+// five-minute stop into real mileage, which inflates distance, then average
+// speed, then makes beats-per-mile look better than the rider earned.
+function driftingTrack({ seconds, startMs = 1_700_000_000_000, metres = 3, baseLat = LAT0 }) {
+  const pts = []
+  for (let s = 0; s <= seconds; s += 1) {
+    // Wander back and forth, never actually going anywhere.
+    const offset = (s % 2 === 0 ? metres : -metres) / 1609.344
+    pts.push([baseLat + offset / MI_PER_DEG_LAT, LON0, startMs + s * 1000, null, null])
+  }
+  return pts
+}
+
+const rode = movingTrack({ mph: 12, seconds: 60 })
+check('a steady ride counts in full', Math.abs(movingDistanceMiles(rode) - 12 / 60) < 0.01, true)
+
+const drifted = driftingTrack({ seconds: 120 })
+const driftRaw = drifted.reduce(
+  (sum, p, i) => (i ? sum + Math.abs(p[0] - drifted[i - 1][0]) * MI_PER_DEG_LAT : 0),
+  0,
+)
+check('drift alone is real distance if unfiltered', driftRaw > 0.4, true)
+check('but moving distance rejects it', movingDistanceMiles(drifted) < 0.02, true)
+
+// A ride, then a two-minute stop. The drift must continue from where the ride
+// ended, not teleport back to the origin — otherwise the test measures a
+// 0.2-mile jump rather than a stop.
+const stopStart = 1_700_000_000_000
+const firstLeg = movingTrack({ mph: 12, seconds: 60, startMs: stopStart })
+const mixed = [
+  ...firstLeg,
+  ...driftingTrack({
+    seconds: 120,
+    startMs: stopStart + 61_000,
+    baseLat: firstLeg[firstLeg.length - 1][0],
+  }),
+]
+// Some slack for the window's lag: for the first few seconds of a stop the
+// window still contains riding, so a little drift slips through. That is tens
+// of metres per stop against the half-mile an unfiltered sum would add.
+check(
+  'a stop in the middle does not add mileage',
+  Math.abs(movingDistanceMiles(mixed) - 12 / 60) < 0.05,
+  true,
+)
+
+console.log('\nMoving distance edge cases')
+check('an empty track is zero', movingDistanceMiles([]), 0)
+check('a single point is zero', movingDistanceMiles([[LAT0, LON0, 1, null, null]]), 0)
+check('a null track is zero', movingDistanceMiles(null), 0)
+// With no timestamps there is no speed to judge; the raw total is the only
+// honest answer, and a silent zero would be much worse.
+const untimedRide = movingTrack({ mph: 12, seconds: 60 }).map(([lat, lon]) => [lat, lon, 0, null, null])
+check('an untimed track falls back to raw distance', movingDistanceMiles(untimedRide) > 0.15, true)
 
 console.log('\nClimb so far')
 const climbing = [
