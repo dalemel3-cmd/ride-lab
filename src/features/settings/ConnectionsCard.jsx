@@ -56,6 +56,8 @@ export default function ConnectionsCard({ showToast, refresh }) {
   const [error, setError] = useState(null)
   // Raw provider capability report, shown verbatim when asked for.
   const [discovery, setDiscovery] = useState(null)
+  // Per-type explanations from the last sync — what came back empty and why.
+  const [syncNotes, setSyncNotes] = useState([])
 
   const loadStatus = useCallback(async () => {
     try {
@@ -155,6 +157,13 @@ export default function ConnectionsCard({ showToast, refresh }) {
         showToast(imported > 0 ? `Imported ${imported} records` : 'Already up to date')
       }
 
+      // A sync can succeed overall while one data type quietly brings back
+      // nothing, which a toast counting imported rows cannot express. The
+      // server explains each of those in `notes`; without somewhere to show
+      // them the only way to find out was to read the database by hand.
+      const collected = Object.values(results ?? {}).flatMap((r) => r?.notes ?? [])
+      setSyncNotes(collected)
+
       await loadStatus()
       refresh()
     } catch (err) {
@@ -176,6 +185,33 @@ export default function ConnectionsCard({ showToast, refresh }) {
       </div>
 
       {loading && <p className="muted" style={{ margin: 0 }}>Checking…</p>}
+
+      {syncNotes.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            padding: 10,
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--color-surface-raised)',
+          }}
+        >
+          <strong style={{ fontSize: 'var(--text-xs)' }}>From the last sync</strong>
+          {syncNotes.map((note, i) => (
+            <span key={i} className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+              {note}
+            </span>
+          ))}
+          <button
+            className="btn"
+            style={{ alignSelf: 'flex-start', padding: '6px 10px', minHeight: 'var(--tap-target)' }}
+            onClick={() => setSyncNotes([])}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {error && (
         <p className="muted" style={{ margin: 0, color: 'var(--status-error)' }}>

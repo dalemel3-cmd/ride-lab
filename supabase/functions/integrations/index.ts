@@ -563,30 +563,60 @@ async function backfillRideHeartRate(
     const start = Math.min(...times)
     const end = Math.max(...times)
 
+    const windowStart = start - MAX_MATCH_MS
+    const windowEnd = end + MAX_MATCH_MS
+    const day = ride.ridden_at.slice(0, 10)
+
     try {
-      // Only this ride's own window, so the query stays small however long the
-      // sync window is. Widened either side so a sample just before the first
-      // fix can still match it.
-      const from = new Date(start - MAX_MATCH_MS).toISOString()
-      const to = new Date(end + MAX_MATCH_MS).toISOString()
-      const filter =
-        `heart_rate.sample_time.physical_time >= "${from}" AND ` +
-        `heart_rate.sample_time.physical_time <= "${to}"`
+      // Only a lower bound. An upper bound needs a second clause joined with
+      // AND, and this API's support for that is undocumented — depending on it
+      // once already turned the whole pass into a silent no-op.
+      const filter = `heart_rate.sample_time.physical_time >= "${new Date(windowStart).toISOString()}"`
 
-      const points = await googleListAll(token, 'heart-rate', filter, 40)
-
+      // Paged by hand rather than through googleListAll so it can stop early.
+      // The ordering of results is not documented either — a 30-day query
+      // returns samples from minutes ago, which suggests newest-first — so
+      // rather than assume, this stops when a whole page adds nothing inside
+      // the window, which holds whichever way the API sorts.
       const samples: { t: number; bpm: number }[] = []
-      for (const point of points) {
-        const iso = findTime(point, ['physicalTime', 'physical_time'])
-        const bpm = findNumber(point, ['beatsPerMinute', 'beats_per_minute', 'bpm'])
-        // Google sends beatsPerMinute as a string; findNumber already coerces.
-        if (!iso || bpm === null || bpm <= 0) continue
-        const t = new Date(iso).getTime()
-        if (Number.isFinite(t)) samples.push({ t, bpm })
-      }
+      let pageToken: string | undefined
+      let pages = 0
+      let scanned = 0
+
+      do {
+        const params: Record<string, string> = { filter, page_size: '100' }
+        if (pageToken) params.page_token = pageToken
+
+        const { ok, status, body } = await googleGet(token, 'heart-rate', params)
+        if (!ok) {
+          throw new Error(`heart-rate list failed (${status}): ${JSON.stringify(body).slice(0, 200)}`)
+        }
+
+        const before = samples.length
+        for (const point of body.dataPoints ?? []) {
+          const iso = findTime(point, ['physicalTime', 'physical_time'])
+          const bpm = findNumber(point, ['beatsPerMinute', 'beats_per_minute', 'bpm'])
+          // Google sends beatsPerMinute as a string; findNumber coerces it.
+          if (!iso || bpm === null || bpm <= 0) continue
+          const t = new Date(iso).getTime()
+          if (!Number.isFinite(t)) continue
+          scanned += 1
+          if (t >= windowStart && t <= windowEnd) samples.push({ t, bpm })
+        }
+
+        pageToken = body.nextPageToken
+        pages += 1
+
+        // Once a full page contributes nothing and something was already
+        // found, the pages have moved past the ride in whichever direction
+        // they run.
+        if (samples.length === before && samples.length > 0) break
+      } while (pageToken && pages < 60)
 
       if (samples.length === 0) {
-        notes.push(`heart rate: no samples covering the ${ride.ridden_at.slice(0, 10)} ride`)
+        notes.push(
+          `heart rate: scanned ${scanned} samples over ${pages} pages, none inside the ${day} ride window`,
+        )
         continue
       }
 
@@ -617,7 +647,7 @@ async function backfillRideHeartRate(
       })
 
       if (matched === 0) {
-        notes.push(`heart rate: samples found but none within 90s of the ${ride.ridden_at.slice(0, 10)} ride`)
+        notes.push(`heart rate: ${samples.length} samples near the ${day} ride, but none within 90s of a track point`)
         continue
       }
 
@@ -639,10 +669,10 @@ async function backfillRideHeartRate(
       ridesUpdated += 1
       pointsMatched += matched
       notes.push(
-        `heart rate: filled ${matched} of ${track.length} points on the ${ride.ridden_at.slice(0, 10)} ride`,
+        `heart rate: filled ${matched} of ${track.length} points on the ${day} ride from ${samples.length} samples`,
       )
     } catch (error) {
-      notes.push(`heart rate (${ride.ridden_at.slice(0, 10)}): ${String((error as Error).message ?? error).slice(0, 160)}`)
+      notes.push(`heart rate (${day}): ${String((error as Error).message ?? error).slice(0, 200)}`)
     }
   }
 
