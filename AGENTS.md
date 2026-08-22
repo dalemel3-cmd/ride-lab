@@ -21,6 +21,12 @@ plain-language note, and why fabricating a number is worse than missing one.
 npm run check        # lint + build + metric tests. Required before pushing.
 ```
 
+`no-undef` is enabled, so an identifier that is used but never defined now fails
+the lint step. It was not enabled once, and a deleted `avgHr` calculation with
+its reference left behind passed lint while throwing on every GPX import. Lint
+still cannot tell you a value is wrong — only that it exists — so the browser
+suites remain necessary.
+
 Browser suites need a server. `tests/ui.js` and `tests/queue.js` want preview or
 dev; `tests/gpx.js` needs **dev** specifically, because it imports a module by
 source path that the built preview does not serve.

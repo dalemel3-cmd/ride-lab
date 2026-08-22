@@ -4,11 +4,16 @@
     "correctness": "error",
     "suspicious": "warn"
   },
-  "env": { "browser": true, "es2024": true },
+  "env": {
+    "browser": true,
+    "es2024": true,
+    "node": true
+  },
   "rules": {
     "no-unused-vars": "warn",
     "react/react-in-jsx-scope": "off",
     "react/jsx-key": "error",
-    "react/no-children-prop": "error"
+    "react/no-children-prop": "error",
+    "no-undef": "error"
   }
 }
