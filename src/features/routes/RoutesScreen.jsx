@@ -98,7 +98,9 @@ export default function RoutesScreen({
           area: 'Bentonville / NWA',
           distance_mi: parsed.distanceMi != null ? parsed.distanceMi : '',
           elevation_ft: parsed.elevationFt != null ? parsed.elevationFt : '',
-          surface: 'paved-trail',
+          // From the file's own <type> when it says one; gravel and
+          // singletrack must not be filed as pavement.
+          surface: parsed.surface ?? 'paved-trail',
           difficulty: 'green',
           notes: `Imported GPX route (${parsed.distanceMi || 0} mi, ${parsed.elevationFt || 0} ft climb).`,
           track: parsed.track,

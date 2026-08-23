@@ -49,6 +49,27 @@ function elevationGainFeet(elevations) {
 }
 
 /**
+ * Map a GPX activity type onto this app's surface vocabulary.
+ *
+ * Strava writes `<type>gravel_biking</type>` and similar into the track. Reading
+ * it matters more than it looks: surface is what makes beats-per-mile
+ * comparable, because gravel and singletrack cost far more per mile than
+ * pavement at identical fitness. Importing a gravel route as paved-trail pools
+ * it with the greenway rides and makes the rider look slower than they are.
+ *
+ * Returns null for anything unrecognised, so the caller falls back to its own
+ * default rather than this guessing.
+ */
+function surfaceFromType(type) {
+  const t = (type ?? '').toLowerCase()
+  if (!t) return null
+  if (t.includes('gravel')) return 'gravel'
+  if (t.includes('mountain') || t.includes('mtb')) return 'singletrack'
+  if (t.includes('road') || t.includes('cycling') || t.includes('biking')) return 'road'
+  return null
+}
+
+/**
  * Parse a GPX document into the fields a ride needs.
  *
  * Returns null when the file contains no usable track. Throws only on input
@@ -146,5 +167,12 @@ export function parseGpx(xmlText) {
     maxHr,
     pointCount: track.length,
     hasHeartRate: heartRates.length > 0,
+    surface: surfaceFromType(
+      doc.getElementsByTagName('trk')[0]?.getElementsByTagName('type')[0]?.textContent,
+    ),
+    // A planned route carries positions and elevation but no timestamps. That
+    // distinction decides whether a file is something you rode or something you
+    // intend to ride, and the two must not be logged the same way.
+    isPlannedRoute: firstTime === null,
   }
 }
