@@ -393,8 +393,32 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
           else if (kg !== null) row.weight_lbs = Math.round(kg * KG_TO_LBS * 10) / 10
           else if (lbs !== null) row.weight_lbs = Math.round(lbs * 10) / 10
         } else if (key === 'bodyFat') {
-          const pct = findNumber(point, ['percentage', 'percent'])
-          if (pct !== null) row.body_fat_pct = Math.round(pct * 10) / 10
+          // Same trap as HRV and VO2 max: the plausible field name and the real
+          // one are rarely the same, so several are tried. A Withings Body
+          // scale is the source here, and body fat is the number the case study
+          // actually turns on — weight can sit flat for four months while
+          // composition moves underneath it.
+          const raw = findNumber(point, [
+            'bodyFatPercentage',
+            'body_fat_percentage',
+            'percentage',
+            'percent',
+          ])
+
+          if (raw !== null) {
+            // Google may report a ratio (0.18) or a percentage (18). Nothing
+            // alive has 0.18% body fat, so anything at or under 1 is a ratio.
+            const pct = raw <= 1 ? raw * 100 : raw
+            // 3% is below the essential-fat floor and 70% is past the recorded
+            // maximum, so a value outside that came from the wrong field. Drop
+            // it with a note rather than chart it as a body composition result.
+            if (pct >= 3 && pct <= 70) row.body_fat_pct = Math.round(pct * 10) / 10
+            else {
+              notes.push(
+                `body fat: ignored an out-of-range value (${raw}) — field mapping may be wrong`,
+              )
+            }
+          }
         } else if (key === 'restingHeartRate') {
           const bpm = findNumber(point, ['beatsPerMinute', 'beats_per_minute', 'bpm'])
           if (bpm !== null) row.resting_hr = Math.round(bpm)
