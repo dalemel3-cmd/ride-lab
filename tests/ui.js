@@ -174,7 +174,7 @@ async function main() {
   await page.getByRole('button', { name: /Log/ }).click()
   await page.waitForSelector('#distance')
 
-  await page.fill('#route', 'Slaughter Pen Loop')
+  await page.fill('#route', 'Slaughter Pen Classic Loop')
   await page.fill('#distance', '12.4')
   await page.fill('#duration', '58')
   await page.fill('#elevation', '640')
@@ -194,7 +194,7 @@ async function main() {
   check('distance is stored as a number', db.rides[0]?.distance_mi, 12.4)
 
   const cardText = await page.locator('article.card').first().innerText()
-  check('the card shows the route', cardText.includes('Slaughter Pen Loop'), true)
+  check('the card shows the route', cardText.includes('Slaughter Pen Classic Loop'), true)
   // 12.4 mi in 58 min = 12.8 mph.
   check('the card computes average speed', cardText.includes('12.8 mph'), true)
   // 6 × 58 = 348.
@@ -337,7 +337,7 @@ async function main() {
   await page.locator('.nav-item', { hasText: 'Routes' }).click()
   await page.waitForSelector('article.card')
   const routesText = await page.locator('.app-main').innerText()
-  check('the route library lists Slaughter Pen', routesText.includes('Slaughter Pen Loop'), true)
+  check('the route library lists Slaughter Pen', routesText.includes('Slaughter Pen'), true)
   check('per-route ride counts appear', routesText.includes('Ridden'), true)
   // The ride logged above was entered by hand, so it carries no GPS track and
   // there is nothing to match. The card must say that rather than crash or

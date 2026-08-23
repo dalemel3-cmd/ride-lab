@@ -74,10 +74,30 @@ export default function App() {
     setBodyComp(bc.rows)
     setJournal(jn.rows)
 
-    const existingNames = new Set(rt.rows.map((r) => r.name.toLowerCase()))
-    const missingSeeds = SEED_ROUTES.filter((r) => !existingNames.has(r.name.toLowerCase()))
+    // Starter routes are planted once, on a genuinely new account, and never
+    // again.
+    //
+    // Seeding by "which names are missing" instead re-creates any starter route
+    // the rider has deleted, on the very next refresh — and refresh runs on
+    // load, after every save, and after every sync, so a deleted route is
+    // effectively undeletable. That bug was fixed once already; the marker
+    // below is what prevents it, and it has to be *read*, not merely written.
+    //
+    // Wanting them back later is a real thing to want, which is what the
+    // "Seed Routes" button on the Routes screen is for. That is a decision the
+    // rider makes, not one the app makes for them every few seconds.
+    let alreadySeeded = true
+    try {
+      alreadySeeded = localStorage.getItem(ROUTES_SEEDED_KEY) !== null
+    } catch {
+      /* private mode — treat as seeded rather than seeding on every load */
+    }
 
-    // Seed missing starter routes so the user immediately has the door-to-trail routes
+    const existingNames = new Set(rt.rows.map((r) => r.name.toLowerCase()))
+    const missingSeeds = alreadySeeded
+      ? []
+      : SEED_ROUTES.filter((r) => !existingNames.has(r.name.toLowerCase()))
+
     if (missingSeeds.length > 0 && !rt.fromCache) {
       const seeded = [...rt.rows]
       for (const route of missingSeeds) {
@@ -91,6 +111,15 @@ export default function App() {
       }
       setRoutes(seeded)
     } else {
+      // Mark a pre-existing library as seeded too, so an account that already
+      // has routes never triggers the first-run path.
+      if (!alreadySeeded && !rt.fromCache) {
+        try {
+          localStorage.setItem(ROUTES_SEEDED_KEY, '3')
+        } catch {
+          /* private mode */
+        }
+      }
       setRoutes(rt.rows)
     }
 
