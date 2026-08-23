@@ -328,6 +328,25 @@ async function main() {
   // The header renders this compactly as "W1/16"; it read "Week 1 of 16"
   // before the progress screen was redesigned.
   check('the study window is shown', /W\d+\/\d+/.test(progressText), true)
+
+  // The findings card leads the screen. Before it, answering "is any of this
+  // working?" meant reading eight charts and doing the comparison yourself.
+  //
+  // Matched case-insensitively: the app's own CSS renders headings and stat
+  // labels uppercase, and innerText returns what is painted, not the source.
+  const progressLower = progressText.toLowerCase()
+  check('the findings lead the screen', progressLower.includes('where the study stands'), true)
+  check('cardiac cost is stated first', progressLower.includes('cardiac cost'), true)
+  check(
+    'the headline explains what the number means',
+    progressLower.includes('same work for fewer beats'),
+    true,
+  )
+  check(
+    'an unfinished window says what it is waiting for',
+    /\d+ of 42 days/.test(progressText),
+    true,
+  )
   check('heart rate zones are explained', progressText.includes('Endurance'), true)
   check('total distance is summarised', progressText.includes('20.4'), true)
   const charts = await page.locator('.recharts-wrapper').count()

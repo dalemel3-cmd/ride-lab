@@ -45,6 +45,7 @@ import { StatGrid, StatTile, ScienceNote, EmptyState, ReadinessDial, FormStatusB
 import ZoneBar from '../../components/ZoneBar.jsx'
 import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 import StudyReadiness from '../../components/StudyReadiness.jsx'
+import StudyHeadline from '../../components/StudyHeadline.jsx'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
 
@@ -265,6 +266,136 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     }
   }, [chronological, rides])
 
+  // The findings, in the order someone actually wants them: what riding is
+  // doing to the body first, what the training looks like second. The charts
+  // below are the working; this is the answer.
+  //
+  // Every row is gated by the same `maturity` the export uses, so the screen
+  // and the exported document can never disagree about what is known yet.
+  const headline = useMemo(() => {
+    const items = []
+
+    // 1. Aerobic efficiency. The single clearest adaptation signal a rider can
+    // see in four months: fewer heartbeats to cover the same mile.
+    if (efficiencyTrend) {
+      const better = efficiencyTrend.change < 0
+      items.push({
+        key: 'efficiency',
+        label: `Cardiac cost — ${surfaceLabel || 'primary surface'}`,
+        value: efficiencyTrend.last,
+        unit: 'beats/mi',
+        tone: better ? 'good' : 'warn',
+        note: better
+          ? `Down ${Math.abs(efficiencyTrend.change)} beats/mile from ${efficiencyTrend.first} (${efficiencyTrend.pctChange}%). Your heart is doing the same work for fewer beats — the clearest sign the training is landing.`
+          : `Up ${Math.abs(efficiencyTrend.change)} beats/mile from ${efficiencyTrend.first} (${efficiencyTrend.pctChange}%). Harder terrain, heat, or fatigue all read this way, so watch the trend rather than one ride.`,
+        pending: totals.rides < 4 ? `Only ${totals.rides} rides on this surface — treat as an early read` : null,
+      })
+    } else {
+      items.push({
+        key: 'efficiency',
+        label: 'Cardiac cost',
+        value: null,
+        tone: 'neutral',
+        note: 'Needs two rides on the same surface with average heart rate recorded. This is the headline number of the whole study.',
+      })
+    }
+
+    // 2. Body composition against the baseline the rider chose.
+    if (baselineBody && latestBody && baselineBody !== latestBody) {
+      const fatFrom = baselineBody.body_fat_pct
+      const fatTo = latestBody.body_fat_pct
+      const weightFrom = baselineBody.weight_lbs
+      const weightTo = latestBody.weight_lbs
+
+      if (fatFrom != null && fatTo != null) {
+        const change = Math.round((fatTo - fatFrom) * 10) / 10
+        items.push({
+          key: 'bodyfat',
+          label: 'Body fat vs. baseline',
+          value: fatTo,
+          unit: '%',
+          tone: change < 0 ? 'good' : 'neutral',
+          note: `${change === 0 ? 'Unchanged' : `${change > 0 ? '+' : ''}${change} points`} from ${fatFrom}% at baseline${
+            weightFrom != null && weightTo != null
+              ? `, on ${weightTo} lbs (${Math.round((weightTo - weightFrom) * 10) / 10 > 0 ? '+' : ''}${Math.round((weightTo - weightFrom) * 10) / 10} lbs)`
+              : ''
+          }. Composition moving while weight sits still is the normal early pattern.`,
+        })
+      } else if (weightFrom != null && weightTo != null) {
+        const change = Math.round((weightTo - weightFrom) * 10) / 10
+        items.push({
+          key: 'weight',
+          label: 'Weight vs. baseline',
+          value: weightTo,
+          unit: 'lbs',
+          tone: 'neutral',
+          note: `${change > 0 ? '+' : ''}${change} lbs from ${weightFrom}. Weight alone can stay flat for months while body composition shifts underneath it — the scale's body-fat reading is the one to watch.`,
+        })
+      }
+    }
+
+    // 3. Resting heart rate: the cheapest, most honest long-run marker there is.
+    if (latestBody?.resting_hr != null) {
+      const from = baselineBody?.resting_hr
+      const change = from != null ? Math.round(latestBody.resting_hr - from) : null
+      items.push({
+        key: 'resting-hr',
+        label: 'Resting heart rate',
+        value: latestBody.resting_hr,
+        unit: 'bpm',
+        tone: change != null && change < 0 ? 'good' : 'neutral',
+        note:
+          change == null
+            ? 'Mark a baseline measurement in Body and this starts reading as a trend rather than a number.'
+            : `${change === 0 ? 'Unchanged' : `${change > 0 ? '+' : ''}${change} bpm`} from ${from} at baseline. A resting rate drifting down over months is aerobic adaptation you can feel in daily life, not just on the bike.`,
+      })
+    }
+
+    // 4. Autonomic state, only once its baseline exists. Before that the bands
+    // are narrower than the day-to-day noise and every reading trips a verdict.
+    if (latestHrvBand) {
+      items.push({
+        key: 'hrv',
+        label: 'HRV (rMSSD)',
+        value: latestHrvBand.hrv,
+        unit: 'ms',
+        tone: latestHrvBand.baselineEstablished ? latestHrvBand.tone : 'neutral',
+        note: latestHrvBand.baselineEstablished
+          ? `${latestHrvBand.autonomicState}. Baseline ${latestHrvBand.baselineHrv} ms, normal range ${latestHrvBand.lowerBand}–${latestHrvBand.upperBand} ms.`
+          : 'Building the rolling baseline. Until there are seven readings the normal range is narrower than ordinary day-to-day variation, so no autonomic verdict is worth printing.',
+        pending: latestHrvBand.baselineEstablished
+          ? null
+          : `${latestHrvBand.samples} of ${MIN_HRV_BASELINE_SAMPLES} readings`,
+      })
+    }
+
+    // 5. Training load. Last, because it describes the input rather than the
+    // result, and because it is the part that takes six weeks to mean anything.
+    if (latestPmc) {
+      items.push({
+        key: 'load',
+        label: 'Fitness (CTL)',
+        value: latestPmc.ctl,
+        tone: 'neutral',
+        note: maturity.ctlReady
+          ? `Form ${latestPmc.tsb} (${latestPmc.status}). Fitness is a 42-day average of training load; form is that minus recent fatigue.`
+          : `Form ${latestPmc.tsb}. Fitness is a 42-day rolling average, so this figure is still mostly made of the days before you started riding — it climbs on its own as the window fills.`,
+        pending: maturity.ctlReady ? null : `${maturity.days} of 42 days`,
+      })
+    }
+
+    return items
+  }, [
+    efficiencyTrend,
+    surfaceLabel,
+    totals.rides,
+    baselineBody,
+    latestBody,
+    latestHrvBand,
+    latestPmc,
+    maturity,
+  ])
+
   function handleExportCaseStudy() {
     const provisional = (ready, needDays) =>
       ready ? '' : ` *(provisional — ${maturity.days}d of ${needDays}d history)*`
@@ -400,6 +531,13 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
           </span>
         </div>
       </div>
+
+      {/* The findings, before the instrumentation. Everything below this card
+          is the evidence for it. */}
+      <StudyHeadline
+        maturity={`${maturity.days}d · ${totals.rides} ride${totals.rides === 1 ? '' : 's'}`}
+        items={headline}
+      />
 
       {/* Cyber-Athletic Readiness & Recovery HUD */}
       <StudyReadiness items={coverage} />
