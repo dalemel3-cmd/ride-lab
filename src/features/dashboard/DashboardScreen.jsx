@@ -6,7 +6,6 @@ import {
   TrendingUp,
   Plus,
   Bike,
-  Navigation,
 } from 'lucide-react'
 import {
   dailyReadiness,
@@ -36,7 +35,6 @@ export default function DashboardScreen({
   rides,
   bodyComp,
   settings,
-  routes,
   onNavigate,
 }) {
   // Sort chronological oldest-first
@@ -137,36 +135,6 @@ export default function DashboardScreen({
     () => (recentZones ? polarizedAudit(recentZones) : null),
     [recentZones],
   )
-
-  // 9. Match Suggested Route from library based on today's readiness
-  const suggestedRoute = useMemo(() => {
-    if (!routes || routes.length === 0) return null
-    if (!readiness || readiness.zone === 'amber') {
-      // Zone 2 Base: favor paved-trail, gentle green/blue
-      return (
-        routes.find((r) => r.surface === 'paved-trail') ||
-        routes.find((r) => r.difficulty === 'green') ||
-        routes[0]
-      )
-    }
-    if (readiness.zone === 'green') {
-      // High capacity: favor punchy climbing or singletrack
-      return (
-        routes.find((r) => r.difficulty === 'blue' || r.difficulty === 'black') ||
-        routes.find((r) => (r.elevation_ft ?? 0) > 500) ||
-        routes[0]
-      )
-    }
-    if (readiness.zone === 'red') {
-      // Recovery: shortest, flattest green/paved route
-      return (
-        routes.find((r) => r.difficulty === 'green' && (r.distance_mi ?? 0) <= 15) ||
-        routes.find((r) => r.surface === 'paved-trail') ||
-        routes[0]
-      )
-    }
-    return routes[0]
-  }, [routes, readiness])
 
   // Study Progress
   const studyStart = settings.caseStudyStartDate
@@ -327,97 +295,6 @@ export default function DashboardScreen({
               </div>
             </div>
 
-            {/* MATCHED ROUTE & 1-TAP NAVIGATION IN HERO */}
-            {suggestedRoute && (
-              <div
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'rgba(34, 211, 238, 0.04)',
-                  border: '1px solid rgba(34, 211, 238, 0.2)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                    <Navigation size={14} color="var(--color-accent)" style={{ flexShrink: 0 }} />
-                    <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)', wordBreak: 'break-word' }}>
-                      {suggestedRoute.name}
-                    </strong>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      color: 'var(--color-accent)',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {suggestedRoute.difficulty}
-                  </span>
-                </div>
-
-                <div className="muted" style={{ fontSize: 'var(--text-xs)', wordBreak: 'break-word' }}>
-                  {[
-                    suggestedRoute.area,
-                    suggestedRoute.distance_mi != null && `${suggestedRoute.distance_mi} mi`,
-                    suggestedRoute.elevation_ft != null && `${suggestedRoute.elevation_ft} ft climb`,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </div>
-
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 2 }}>
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-                      settings?.homeBase || '1105 SW Grand Blvd, Bentonville, AR',
-                    )}&destination=${encodeURIComponent(
-                      suggestedRoute.destination || `${suggestedRoute.name}, Bentonville, AR`,
-                    )}&travelmode=bicycling`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-primary"
-                    style={{
-                      padding: '8px 14px',
-                      fontSize: 'var(--text-xs)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      textDecoration: 'none',
-                      flex: '1 1 auto',
-                      justifyContent: 'center',
-                      minWidth: 150,
-                    }}
-                  >
-                    <Navigation size={14} aria-hidden="true" />
-                    Navigate in Google Maps
-                  </a>
-
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => onNavigate('routes')}
-                    style={{
-                      padding: '8px 14px',
-                      fontSize: 'var(--text-xs)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      flex: '1 1 auto',
-                      justifyContent: 'center',
-                      minWidth: 130,
-                    }}
-                  >
-                    View Cues & Library
-                  </button>
-                </div>
-              </div>
-            )}
           </>
         ) : (
           <p className="muted" style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
