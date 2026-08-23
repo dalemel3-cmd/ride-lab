@@ -79,6 +79,30 @@ const MINIMAL_GPX = `<?xml version="1.0"?>
   </trkseg></trk>
 </gpx>`
 
+// A ride with a real stop in the middle: ten minutes rolling, ten minutes
+// stationary at the same coordinates, ten minutes rolling again.
+const STOPPED_GPX = `<?xml version="1.0"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><trkseg>
+    <trkpt lat="36.3729" lon="-94.2088"><time>2026-08-18T12:00:00Z</time></trkpt>
+    <trkpt lat="36.3829" lon="-94.2088"><time>2026-08-18T12:10:00Z</time></trkpt>
+    <trkpt lat="36.3829" lon="-94.2088"><time>2026-08-18T12:20:00Z</time></trkpt>
+    <trkpt lat="36.3929" lon="-94.2088"><time>2026-08-18T12:30:00Z</time></trkpt>
+  </trkseg></trk>
+</gpx>`
+
+// A paused recording: the clock jumps half an hour between two points that are
+// a normal distance apart. The implied speed looks like riding, but half an
+// hour is not a sample interval.
+const PAUSED_GPX = `<?xml version="1.0"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><trkseg>
+    <trkpt lat="36.3729" lon="-94.2088"><time>2026-08-18T12:00:00Z</time></trkpt>
+    <trkpt lat="36.3829" lon="-94.2088"><time>2026-08-18T12:10:00Z</time></trkpt>
+    <trkpt lat="36.4829" lon="-94.2088"><time>2026-08-18T12:40:00Z</time></trkpt>
+  </trkseg></trk>
+</gpx>`
+
 const NO_TRACK_GPX = `<?xml version="1.0"?>
 <gpx xmlns="http://www.topografix.com/GPX/1/1"><wpt lat="36.3" lon="-94.2"></wpt></gpx>`
 
@@ -134,6 +158,29 @@ async function main() {
   check('missing duration is null, not zero', minimal.durationMin, null)
   check('missing elevation is null', minimal.elevationFt, null)
   check('no name is null rather than empty', minimal.name, null)
+
+  console.log('\nMoving time, not elapsed')
+  // Duration is the denominator of beats-per-mile, so counting a photo stop as
+  // riding inflates the cost of covering ground. The Strava importer already
+  // read moving_time; this path took last-minus-first and disagreed with it.
+  const stopped = (await run(STOPPED_GPX)).value
+  check('elapsed time is the full half hour', stopped.elapsedMin, 30)
+  check('but duration counts only the riding', stopped.durationMin, 20)
+  check('and the stop is reported rather than absorbed', stopped.stoppedMin, 10)
+
+  const paused = (await run(PAUSED_GPX)).value
+  // Ten minutes of riding, then a thirty-minute jump that is a paused
+  // recording rather than a sample interval, however fast it looks.
+  check('a paused recording contributes no moving time', paused.movingMin, 10)
+  check('elapsed still spans the whole file', paused.elapsedMin, 40)
+
+  // Smart recording samples sparsely at steady speed, so a longer gap that
+  // still implies riding has to count as riding.
+  check('sparse sampling at riding speed still counts', strava.movingMin, 20)
+
+  // A planned route has positions but no clock, so there is no moving time to
+  // report and none should be invented.
+  check('a route with no timestamps has no moving time', minimal.movingMin, null)
 
   console.log('\nFiles that cannot be imported')
   check('a file with no track returns null', (await run(NO_TRACK_GPX)).value, null)

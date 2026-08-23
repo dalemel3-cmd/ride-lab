@@ -128,10 +128,17 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
       })
       setMode('form')
       fireConfetti({ particleCount: 55 })
+
+      // Duration is moving time, not elapsed. A rider who stood still for
+      // twenty minutes should be told that the number in the form is smaller
+      // than the clock said, rather than assuming the import lost something.
+      const stopped = parsed.stoppedMin ?? 0
+      const stopNote = stopped >= 2 ? ` (${stopped} min stopped, not counted)` : ''
+
       showToast(
         parsed.hasHeartRate
-          ? `Imported ${parsed.distanceMi} mi with heart rate!`
-          : `Imported ${parsed.distanceMi} mi — add RPE and route`,
+          ? `Imported ${parsed.distanceMi} mi with heart rate${stopNote}`
+          : `Imported ${parsed.distanceMi} mi — add RPE and route${stopNote}`,
       )
     } catch (error) {
       showToast(String(error.message ?? error), 'error')

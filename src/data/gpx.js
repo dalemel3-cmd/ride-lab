@@ -49,6 +49,62 @@ function elevationGainFeet(elevations) {
 }
 
 /**
+ * Below this, you are not riding. Two miles an hour is walking pace, and a
+ * stationary GPS drifts enough to register something on its own.
+ */
+const MOVING_SPEED_MPH = 2
+
+/**
+ * A leg longer than ten minutes is a paused recording rather than a sample
+ * interval, and its displacement says nothing about how long the riding took.
+ * It contributes no moving time whatever speed it implies.
+ *
+ * The threshold is deliberately generous. Head units use "smart recording",
+ * sampling sparsely while speed and direction hold steady, so a two-minute gap
+ * at 15 mph is ordinary riding — treating every long gap as a stop would throw
+ * away real time and understate the ride.
+ */
+const MAX_LEG_SEC = 600
+
+/**
+ * Time actually spent riding, in minutes.
+ *
+ * This feeds the denominator of the study's headline metric: beats per mile is
+ * average heart rate × duration ÷ distance. Elapsed time counts every photo
+ * stop, mechanical and wrong turn as though it were riding, inflating the cost
+ * of covering ground by however long the rider stood still.
+ *
+ * The Strava importer already made this choice — it reads `moving_time`, and
+ * says in a comment that elapsed "would inflate every easy ride with cafe
+ * stops". This path did the opposite and took last timestamp minus first, so
+ * the same ride imported two ways gave two different answers and the GPX answer
+ * was the wrong one. A real 16-mile ride with a few wrong turns read 911 beats
+ * per mile on elapsed time against roughly 750 on moving time.
+ *
+ * Returns null when the file carries no usable timestamps, so a planned route
+ * is never reported as a ride of zero minutes.
+ */
+function movingMinutes(track) {
+  let seconds = 0
+
+  for (let i = 1; i < track.length; i += 1) {
+    const t1 = track[i - 1][2]
+    const t2 = track[i][2]
+    if (!t1 || !t2) continue
+
+    const dt = (t2 - t1) / 1000
+    if (dt <= 0 || dt > MAX_LEG_SEC) continue
+
+    const miles = haversineMiles(track[i - 1], track[i])
+    if (miles / (dt / 3600) < MOVING_SPEED_MPH) continue
+
+    seconds += dt
+  }
+
+  return seconds > 0 ? Math.round((seconds / 60) * 10) / 10 : null
+}
+
+/**
  * Map a GPX activity type onto this app's surface vocabulary.
  *
  * Strava writes `<type>gravel_biking</type>` and similar into the track. Reading
@@ -132,10 +188,21 @@ export function parseGpx(xmlText) {
     doc.getElementsByTagName('metadata')[0]?.getElementsByTagName('name')[0]?.textContent?.trim() ||
     null
 
-  const durationMin =
+  const elapsedMin =
     firstTime !== null && lastTime !== null && lastTime > firstTime
       ? Math.round(((lastTime - firstTime) / 60000) * 10) / 10
       : null
+
+  // Computed on the full track, deliberately before the downsample below.
+  // Dropping to a thousand points to fit local storage merges short stops into
+  // their neighbouring legs, so moving time measured afterwards is measured on
+  // a blurred track. This is the one figure that has to come off the raw file.
+  const movingMin = movingMinutes(track)
+
+  // Moving time is the honest denominator; elapsed is the fallback for a file
+  // whose points are too sparse to judge, and is kept alongside either way so
+  // the difference between the two is visible rather than silently chosen.
+  const durationMin = movingMin ?? elapsedMin
 
   // Both are needed by the returned object. Removing the average while leaving
   // the reference in place made parseGpx throw a ReferenceError on every file,
@@ -162,6 +229,14 @@ export function parseGpx(xmlText) {
     track: savedTrack,
     distanceMi: Math.round(distance * 100) / 100,
     durationMin,
+    // Both are surfaced so a long stop is visible rather than absorbed. The
+    // gap between them is exactly the time spent not riding.
+    movingMin,
+    elapsedMin,
+    stoppedMin:
+      movingMin !== null && elapsedMin !== null
+        ? Math.round((elapsedMin - movingMin) * 10) / 10
+        : null,
     elevationFt: elevations.length > 1 ? elevationGainFeet(elevations) : null,
     avgHr,
     maxHr,
