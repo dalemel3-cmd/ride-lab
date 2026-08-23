@@ -24,6 +24,7 @@ import {
   hrZoneRanges,
   performanceManagementChart,
   hrvAutonomicBands,
+  MIN_HRV_BASELINE_SAMPLES,
   dailyReadiness,
   substrateOxidation,
   timeInZones,
@@ -239,11 +240,73 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
   const firstHalf = rpeVsHr.slice(0, midpoint)
   const secondHalf = rpeVsHr.slice(midpoint)
 
+  // How much history each model actually has to work with.
+  //
+  // The Banister and Gabbett models are ratios against a long-run average, and
+  // in the opening weeks that average is mostly zeros. The arithmetic still
+  // produces a number — an ACWR of 5.15 labelled "Danger Zone" in week one, off
+  // two easy rides — but that number describes an empty denominator, not the
+  // rider. Anyone who knows the models spots it and discounts the whole
+  // document, so a figure below its window is reported as provisional rather
+  // than asserted as a finding.
+  const maturity = useMemo(() => {
+    const firstRide = chronological[0]
+    const days = firstRide ? daysBetween(recordDate(firstRide), toDateString()) + 1 : 0
+    const ridesWithContinuousHr = rides.filter(
+      (r) => Array.isArray(r.track) && r.track.some((p) => p?.[4] != null),
+    ).length
+    return {
+      days,
+      ridesWithContinuousHr,
+      // CTL is a 42-day exponential average; ACWR compares 7 days against 28.
+      ctlReady: days >= 42,
+      acwrReady: days >= 28,
+      monotonyReady: days >= 7,
+    }
+  }, [chronological, rides])
+
   function handleExportCaseStudy() {
+    const provisional = (ready, needDays) =>
+      ready ? '' : ` *(provisional — ${maturity.days}d of ${needDays}d history)*`
+
+    const pmcBlock = latestPmc
+      ? [
+          `- **Fitness (CTL - 42d):** ${latestPmc.ctl}${provisional(maturity.ctlReady, 42)}`,
+          `- **Fatigue (ATL - 7d):** ${latestPmc.atl}`,
+          // TSB is CTL minus ATL, so its label is only meaningful once CTL is
+          // real. Early on the status just restates "you rode recently".
+          `- **Form (TSB):** ${latestPmc.tsb}${
+            maturity.ctlReady ? ` (${latestPmc.status})` : provisional(false, 42)
+          }`,
+          // Printed without its verdict until the chronic window exists. Two
+          // adjacent lines contradicting each other — "Danger Zone" beside
+          // "Optimal Progressive Overload" — is what made this read as noise.
+          `- **ACWR (Gabbett Ratio):** ${latestAcwr?.ratio ?? '—'}${
+            maturity.acwrReady
+              ? ` (${latestAcwr?.label ?? 'Awaiting data'})`
+              : ` *(not yet interpretable — needs 28d of history, has ${maturity.days}d)*`
+          }`,
+          `- **Foster Monotony (7d):** ${monotonyStats?.monotony ?? '—'} (Strain: ${
+            monotonyStats?.strain ?? '—'
+          })${provisional(maturity.monotonyReady, 7)}`,
+        ].join('\n')
+      : `- No load history available.`
+
+    const autonomicLine = latestHrvBand
+      ? latestHrvBand.baselineEstablished
+        ? latestHrvBand.autonomicState
+        : `Establishing baseline (${latestHrvBand.samples} of ${MIN_HRV_BASELINE_SAMPLES} readings)`
+      : 'Not measured'
+
     const lines = [
       `# 16-Week Cycling Physiological Case Study Report`,
       `**Generated:** ${new Date().toISOString().slice(0, 10)} | **Study Week:** ${currentWeek} of ${settings.caseStudyWeeks}`,
       ``,
+      // Stated once, at the top, so no reader has to infer it from a number
+      // that looks alarming.
+      maturity.days < 42
+        ? `> **Data maturity:** ${maturity.days} day${maturity.days === 1 ? '' : 's'} of ride history across ${totals.rides} ride${totals.rides === 1 ? '' : 's'}. Load models below marked *provisional* are still filling their windows and should not be read as findings yet.\n`
+        : ``,
       `## 1. Executive Summary & Telemetry`,
       `- **Total Rides:** ${totals.rides}`,
       `- **Total Distance:** ${totals.distanceMi} miles`,
@@ -253,7 +316,18 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
       ``,
       `## 2. Training Intensity Distribution (Seiler 3-Domain Model)`,
       polarizedStudyAudit
-        ? `- **Distribution:** ${polarizedStudyAudit.lowPct}% Low (Z1+Z2) / ${polarizedStudyAudit.modPct}% Mod (Z3) / ${polarizedStudyAudit.highPct}% High (Z4+Z5)\n- **Archetype:** ${polarizedStudyAudit.label} (${polarizedStudyAudit.archetype})\n- **Guidance:** ${polarizedStudyAudit.description}`
+        ? [
+            `- **Distribution:** ${polarizedStudyAudit.lowPct}% Low (Z1+Z2) / ${polarizedStudyAudit.modPct}% Mod (Z3) / ${polarizedStudyAudit.highPct}% High (Z4+Z5)`,
+            // A distribution over one ride is that ride, not a training
+            // pattern, and naming an archetype off it overstates the evidence.
+            `- **Basis:** ${maturity.ridesWithContinuousHr} of ${totals.rides} ride${totals.rides === 1 ? '' : 's'} carry continuous heart rate`,
+            `- **Archetype:** ${polarizedStudyAudit.label} (${polarizedStudyAudit.archetype})${
+              maturity.ridesWithContinuousHr < 3
+                ? ` *(provisional — describes ${maturity.ridesWithContinuousHr === 1 ? 'a single ride' : 'a handful of rides'}, not a training pattern)*`
+                : ''
+            }`,
+            `- **Guidance:** ${polarizedStudyAudit.description}`,
+          ].join('\n')
         : `- No continuous HR track distribution available.`,
       ``,
       `## 3. Aerobic Decoupling & Efficiency (${surfaceLabel || 'Primary Surface'})`,
@@ -262,18 +336,26 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
         : `- Insufficient single-surface rides recorded yet.`,
       ``,
       `## 4. Banister Performance Management & Workload Safety`,
-      latestPmc
-        ? `- **Fitness (CTL - 42d):** ${latestPmc.ctl}\n- **Fatigue (ATL - 7d):** ${latestPmc.atl}\n- **Form (TSB):** ${latestPmc.tsb} (${latestPmc.status})\n- **ACWR (Gabbett Ratio):** ${latestAcwr?.ratio ?? '—'} (${latestAcwr?.label ?? 'Awaiting data'})\n- **Foster Monotony (7d):** ${monotonyStats?.monotony ?? '—'} (Strain: ${monotonyStats?.strain ?? '—'})`
-        : `- No load history available.`,
+      pmcBlock,
       latestBody
-        ? `- **Current Resting HR:** ${latestBody.resting_hr ?? '—'} bpm\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms ?? '—'} ms\n- **Autonomic Status:** ${latestHrvBand?.autonomicState ?? 'Not measured'}`
+        ? // Units only where there is a value to carry them: "— ms" reads like a
+          // failed measurement rather than an absent one.
+          `- **Current Resting HR:** ${latestBody.resting_hr != null ? `${latestBody.resting_hr} bpm` : '—'}\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'}\n- **Autonomic Status:** ${autonomicLine}`
         : ``,
       ``,
       `## 5. Repeated Route Progress (Identical Course Control)`,
-      ...routeGains.map(
-        (r) =>
-          `### ${r.route} (${r.rides}x)\n- Dates: ${r.firstDate} → ${r.latestDate}\n- Speed: ${r.speed?.first ?? '—'} → ${r.speed?.latest ?? '—'} mph\n- Cardiac Cost: ${r.beatsPerMile?.first ?? '—'} → ${r.beatsPerMile?.latest ?? '—'} beats/mi`,
-      ),
+      // Every other section states what it cannot measure yet. This one used to
+      // spread an empty list under its heading, so the whole export ended on a
+      // bare title and read as a truncated file.
+      routeGains.length > 0
+        ? routeGains
+            .map(
+              (r) =>
+                `### ${r.route} (${r.rides}x)\n- Dates: ${r.firstDate} → ${r.latestDate}\n- Speed: ${r.speed?.first ?? '—'} → ${r.speed?.latest ?? '—'} mph\n- Cardiac Cost: ${r.beatsPerMile?.first ?? '—'} → ${r.beatsPerMile?.latest ?? '—'} beats/mi`,
+            )
+            .join('\n\n')
+        : `- No route ridden twice yet. Repeating one course is the cleanest control the study has: same distance, same climbing, same surface, so a change in speed or beats-per-mile is adaptation rather than a different day out.`,
+      ``,
     ]
 
     const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })

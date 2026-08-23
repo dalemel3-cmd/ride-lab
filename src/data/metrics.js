@@ -603,10 +603,27 @@ export function performanceManagementChart(rides = [], { ctlDays = 42, atlDays =
 }
 
 /**
+ * How many daily readings a rolling HRV baseline needs before its bands mean
+ * anything.
+ *
+ * Plews works by comparing today against normal variation, and with two or
+ * three readings there is no "normal" yet — the SD is tiny, the bands close to
+ * a hair's width, and the second reading of the study gets flagged as
+ * "Sympathetic Stress / Overreached" for being a few milliseconds off the only
+ * other reading. Seven is the protocol's own window; below it the band is
+ * reported but the verdict is withheld.
+ */
+export const MIN_HRV_BASELINE_SAMPLES = 7
+
+/**
  * HRV 7-Day Rolling Baseline & Smallest Worthwhile Change (SWC) Bands.
  *
  * Implements Plews et al. (2013) sports science protocol:
  * Uses natural log transformation ln(rMSSD) with a 7-day rolling mean ± 0.5 × SD.
+ *
+ * Each result carries `samples` and `baselineEstablished` so a caller can tell
+ * a real autonomic reading from one computed off a baseline that does not exist
+ * yet. A label is not a measurement.
  */
 export function hrvAutonomicBands(bodyComp = []) {
   const points = bodyComp
@@ -634,9 +651,15 @@ export function hrvAutonomicBands(bodyComp = []) {
     const upperBand = Math.round(Math.exp(lnMean + swc) * 10) / 10
 
     const current = points[i].hrv
+    const baselineEstablished = window.length >= MIN_HRV_BASELINE_SAMPLES
+
     let autonomicState = 'Balanced'
     let tone = 'good'
-    if (current < lowerBand) {
+    if (!baselineEstablished) {
+      // Not a verdict — a statement about how much history exists.
+      autonomicState = 'Establishing baseline'
+      tone = 'neutral'
+    } else if (current < lowerBand) {
       autonomicState = 'Sympathetic Stress / Overreached'
       tone = 'bad'
     } else if (current > upperBand) {
@@ -652,6 +675,8 @@ export function hrvAutonomicBands(bodyComp = []) {
       upperBand,
       autonomicState,
       tone,
+      samples: window.length,
+      baselineEstablished,
     })
   }
 

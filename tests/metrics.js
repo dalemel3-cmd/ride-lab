@@ -282,6 +282,40 @@ check('produces band outputs for valid data', hrvResult.length, 3)
 check('upper band is greater than baseline', hrvResult[2].upperBand >= hrvResult[2].baselineHrv, true)
 check('lower band is less than baseline', hrvResult[2].lowerBand <= hrvResult[2].baselineHrv, true)
 
+// Three readings is not a baseline. With an SD computed from a handful of
+// points the bands close to a hair's width, and the second reading of the
+// study gets branded "Sympathetic Stress / Overreached" for sitting a few
+// milliseconds off the only other reading — a fact about the sample size,
+// printed as a finding about the rider.
+check('three readings do not establish a baseline', hrvResult[2].baselineEstablished, false)
+check('withholds the verdict until it has one', hrvResult[2].autonomicState, 'Establishing baseline')
+
+const hrvEstablished = hrvAutonomicBands([
+  { measured_at: '2026-05-01', hrv_ms: 80 },
+  { measured_at: '2026-05-02', hrv_ms: 85 },
+  { measured_at: '2026-05-03', hrv_ms: 82 },
+  { measured_at: '2026-05-04', hrv_ms: 79 },
+  { measured_at: '2026-05-05', hrv_ms: 84 },
+  { measured_at: '2026-05-06', hrv_ms: 81 },
+  { measured_at: '2026-05-07', hrv_ms: 83 },
+])
+check('seven readings establish a baseline', hrvEstablished[6].baselineEstablished, true)
+check('reports how many readings back it', hrvEstablished[6].samples, 7)
+check(
+  'gives a real verdict once established',
+  hrvEstablished[6].autonomicState !== 'Establishing baseline',
+  true,
+)
+
+// The suppression is genuine, not cosmetic: a reading far below the band still
+// reads as unestablished on day two, because there is not yet a band to be
+// below.
+const hrvCrash = hrvAutonomicBands([
+  { measured_at: '2026-05-01', hrv_ms: 80 },
+  { measured_at: '2026-05-02', hrv_ms: 30 },
+])
+check('a crash on day two is not called overreaching', hrvCrash[1].autonomicState, 'Establishing baseline')
+
 console.log('\nDaily Readiness')
 const readyGreen = dailyReadiness({ hrv: 85, hrvBaseline: 80, restingHr: 50, restingHrBaseline: 52, recentTsb: 10 })
 check('green zone for optimal readiness', readyGreen.zone, 'green')

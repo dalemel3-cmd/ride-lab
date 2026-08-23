@@ -460,3 +460,100 @@ label {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Print / Save-as-PDF
+   ---------------------------------------------------------------------------
+   The Markdown export is for pasting into a document. This is the other half:
+   Cmd/Ctrl-P on any screen produces a page someone can hand to a coach, a
+   sponsor, or a doctor.
+
+   The app is a dark, fixed-height, bottom-nav phone shell, and every one of
+   those choices is wrong on paper — dark backgrounds burn ink and often print
+   as empty boxes, 100dvh clips everything below the fold, and the navigation
+   is not part of the document. So print gets light ink-on-white, releases the
+   height so content flows onto as many sheets as it needs, and drops the
+   controls.
+   --------------------------------------------------------------------------- */
+@media print {
+  /* Charts are SVG and carry their own colours; without this browsers drop
+     the fills by default and print bars and lines as blank space. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  :root {
+    --color-bg: #ffffff;
+    --color-surface: #ffffff;
+    --color-text: #111111;
+    --color-muted: #444444;
+    --color-border: #cccccc;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+
+  /* Release the phone shell: fixed viewport heights clip a printed page at
+     one sheet and silently lose everything after it. */
+  .app-layout,
+  .app-main,
+  .screen {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .content-width {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Navigation, buttons and transient UI are not part of the document. */
+  .sidebar,
+  .bottom-nav,
+  .toast,
+  .btn,
+  button {
+    display: none !important;
+  }
+
+  /* Cards become plain bordered blocks that do not split across sheets. */
+  .card,
+  .card-glass-glow,
+  section {
+    background: #ffffff !important;
+    border: 1px solid #cccccc !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  h2,
+  h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* A screen heading starts a section; keep it with what follows it. */
+  .screen-header {
+    break-after: avoid;
+    page-break-after: avoid;
+    border-bottom: 2px solid #111111;
+    margin-bottom: 12px;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}

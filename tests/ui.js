@@ -12,6 +12,7 @@
  */
 
 import { chromium } from 'playwright'
+import { readFileSync } from 'node:fs'
 
 const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:4173'
 
@@ -332,6 +333,30 @@ async function main() {
   const charts = await page.locator('.recharts-wrapper').count()
   check('charts render', charts > 0, true)
   await page.screenshot({ path: 'tests/screenshot-progress.png', fullPage: true })
+
+  // The exported case study is the artefact other people read, so what it says
+  // about its own limits matters as much as its numbers. The first real export
+  // ended on a bare "## 5." heading — an empty list spread under a title — and
+  // stated an ACWR of 5.15 as "Danger Zone" in week one, when that ratio was
+  // measuring an empty 28-day denominator rather than the rider.
+  const downloadPromise = page.waitForEvent('download')
+  await page.locator('button', { hasText: 'Export Study' }).click()
+  const download = await downloadPromise
+  const report = readFileSync(await download.path(), 'utf8')
+
+  check('the export names its own data maturity', report.includes('**Data maturity:**'), true)
+  check(
+    'an immature ACWR is not stated as a verdict',
+    /ACWR[^\n]*not yet interpretable/.test(report),
+    true,
+  )
+  check('CTL is marked provisional before 42 days', /CTL[^\n]*provisional/.test(report), true)
+  check(
+    'section 5 says what it cannot measure yet',
+    report.includes('No route ridden twice yet'),
+    true,
+  )
+  check('the report does not end on a bare heading', /##\s*5\.[^\n]*\n*\s*$/.test(report), false)
 
   console.log('\nRoutes')
   await page.locator('.nav-item', { hasText: 'Routes' }).click()
