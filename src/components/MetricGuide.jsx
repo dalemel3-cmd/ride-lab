@@ -74,6 +74,8 @@ const METRICS = [
       'It separates two things riders constantly confuse: being fit and being fresh. A hard block drives CTL up and TSB down — you are fitter and more tired at once. Reading either number alone leads you to rest when you should build, or build when you should rest.',
     real:
       'CTL needs roughly six weeks before it means anything, because the 42-day window starts mostly full of days you were not riding. Early in a study it climbs on its own as the window fills, which is arithmetic rather than progress — Ride Lab marks it provisional until then. Sustainable growth is a few points per week.',
+    caveat:
+      'The number is not comparable to a CTL read off TrainingPeaks or Strava. Ride Lab decays the average by 2/(N+1), the exponentially-weighted convention used in the training-load literature; TrainingPeaks decays by 1 − e^(−1/N), roughly half as fast, so it reports a different figure from identical rides. Within this study the comparison is consistent, which is what a trend needs — but do not put this CTL next to one from another platform.',
     source:
       'Banister, E. W. (1991). Modeling elite athletic performance. In MacDougall, Wenger & Green (eds), Physiological Testing of Elite Athletes. Foster, C. (1998). Monitoring training in athletes with reference to overtraining syndrome. Medicine & Science in Sports & Exercise, 30(7), 1164–1168.',
   },
@@ -89,8 +91,8 @@ const FURTHER_READING = [
     cite: 'Seiler, S. (2010). What is best practice for training intensity and duration distribution in endurance athletes? International Journal of Sports Physiology and Performance, 5(3), 276–291.',
   },
   {
-    label: 'Acute:chronic workload ratio',
-    cite: 'Gabbett, T. J. (2016). The training—injury prevention paradox: should athletes be training smarter and harder? British Journal of Sports Medicine, 50(5), 273–280.',
+    label: 'Acute:chronic workload ratio (7 days against 28)',
+    cite: 'Gabbett, T. J. (2016). The training—injury prevention paradox: should athletes be training smarter and harder? British Journal of Sports Medicine, 50(5), 273–280. Ride Lab uses the exponentially-weighted form, comparing a 7-day against a 28-day average — not against the 42-day fitness figure, which would inflate the ratio for the first six weeks.',
   },
   {
     label: 'Training monotony and strain',

@@ -523,7 +523,24 @@ export function trimp(avgHrValue, durationMin, maxHrValue, restingHrValue = 60, 
  * Acute Training Load (ATL / Fatigue, 7-day decay), and
  * Training Stress Balance (TSB / Form = CTL - ATL).
  */
-export function performanceManagementChart(rides = [], { ctlDays = 42, atlDays = 7, defaultMaxHr = 190 } = {}) {
+export function performanceManagementChart(
+  rides = [],
+  {
+    ctlDays = 42,
+    atlDays = 7,
+    // ACWR gets its own window and does not reuse CTL. Gabbett's ratio, and the
+    // exponentially-weighted form of it, compare 7 days against 28 — never
+    // against 42. Dividing ATL by a 42-day CTL uses a denominator that fills
+    // more slowly, which inflates the ratio for a month and a half and is what
+    // reported an ACWR of 5.15 in week one as "Danger Zone".
+    acwrChronicDays = 28,
+    defaultMaxHr = 190,
+    // The rider's own measured resting heart rate. TRIMP is a ratio against
+    // heart-rate reserve, so assuming 60 for someone who rests at 54 overstates
+    // the reserve and understates every session's load.
+    restingHr = 60,
+  } = {},
+) {
   if (!Array.isArray(rides) || rides.length === 0) return []
 
   // Map total load per calendar date (using either TRIMP or Foster load)
@@ -534,7 +551,7 @@ export function performanceManagementChart(rides = [], { ctlDays = 42, atlDays =
     // Prefer TRIMP if HR exists, otherwise fallback to Foster sRPE (scaled ~ / 3 to match TRIMP units)
     let load = null
     if (ride.avg_hr && ride.duration_min) {
-      load = trimp(ride.avg_hr, ride.duration_min, defaultMaxHr)
+      load = trimp(ride.avg_hr, ride.duration_min, defaultMaxHr, restingHr)
     }
     if (load === null && ride.rpe && ride.duration_min) {
       load = Math.round((trainingLoad(ride.rpe, ride.duration_min) / 3) * 10) / 10
@@ -550,11 +567,19 @@ export function performanceManagementChart(rides = [], { ctlDays = 42, atlDays =
 
   const startDate = new Date(`${dates[0]}T12:00:00Z`)
   const endDate = new Date()
+  // λ = 2/(N+1), the exponentially-weighted moving average used by Williams et
+  // al. (2017) for this family of metrics. Worth stating because it is not the
+  // only convention: TrainingPeaks decays by 1 − e^(−1/N), which is roughly
+  // half as fast, so CTL here is not numerically comparable to a CTL read off
+  // TrainingPeaks or Strava. Consistency within the study is what matters, and
+  // ACWR below is computed the same way it is published.
   const ctlDecay = 2 / (ctlDays + 1)
   const atlDecay = 2 / (atlDays + 1)
+  const acwrChronicDecay = 2 / (acwrChronicDays + 1)
 
   let ctl = 0
   let atl = 0
+  let acwrChronic = 0
   const series = []
 
   const cur = new Date(startDate)
@@ -564,6 +589,7 @@ export function performanceManagementChart(rides = [], { ctlDays = 42, atlDays =
 
     ctl = ctl * (1 - ctlDecay) + load * ctlDecay
     atl = atl * (1 - atlDecay) + load * atlDecay
+    acwrChronic = acwrChronic * (1 - acwrChronicDecay) + load * acwrChronicDecay
     const tsb = ctl - atl
 
     let status = 'Grey / Maintenance'
@@ -591,7 +617,8 @@ export function performanceManagementChart(rides = [], { ctlDays = 42, atlDays =
       ctl: Math.round(ctl * 10) / 10,
       atl: Math.round(atl * 10) / 10,
       tsb: Math.round(tsb * 10) / 10,
-      acwr: ctl >= 1 ? Math.round((atl / ctl) * 100) / 100 : null,
+      acwrChronic: Math.round(acwrChronic * 10) / 10,
+      acwr: acwrChronic >= 1 ? Math.round((atl / acwrChronic) * 100) / 100 : null,
       status,
       tone,
     })
@@ -940,7 +967,10 @@ export function fosterMonotonyAndStrain(dailyLoads = [], thresholds = FOSTER_MON
 /**
  * 7-Day Rolling Training Monotony & Strain helper from a list of rides.
  */
-export function weeklyMonotony(rides = [], { days = 7, defaultMaxHr = 190, endDate } = {}) {
+export function weeklyMonotony(
+  rides = [],
+  { days = 7, defaultMaxHr = 190, restingHr = 60, endDate } = {},
+) {
   if (!Array.isArray(rides) || rides.length === 0) return null
 
   const end = endDate ? new Date(endDate) : new Date()
@@ -950,7 +980,7 @@ export function weeklyMonotony(rides = [], { days = 7, defaultMaxHr = 190, endDa
     const d = recordDate(ride)
     let load = null
     if (ride.avg_hr && ride.duration_min) {
-      load = trimp(ride.avg_hr, ride.duration_min, defaultMaxHr)
+      load = trimp(ride.avg_hr, ride.duration_min, defaultMaxHr, restingHr)
     }
     if (load === null && ride.rpe && ride.duration_min) {
       load = Math.round((trainingLoad(ride.rpe, ride.duration_min) / 3) * 10) / 10

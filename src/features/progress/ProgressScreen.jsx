@@ -72,10 +72,24 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
   const primarySurface = bySurface[0] ?? null
   const routeGains = useMemo(() => routeProgress(rides), [rides])
 
+  // The rider's own resting heart rate, for TRIMP's heart-rate reserve. Falls
+  // back to 60 only when nothing has been measured — assuming 60 for someone
+  // who rests at 54 overstates the reserve and understates every ride's load.
+  const restingHrForLoad = useMemo(() => {
+    const measured = [...bodyComp]
+      .filter((m) => m?.resting_hr != null && Number(m.resting_hr) > 0)
+      .sort((a, b) => String(a.measured_at).localeCompare(String(b.measured_at)))
+    return measured.length > 0 ? Number(measured[measured.length - 1].resting_hr) : 60
+  }, [bodyComp])
+
   // Performance Management Chart (PMC)
   const pmcSeries = useMemo(
-    () => performanceManagementChart(rides, { defaultMaxHr: settings.maxHr }),
-    [rides, settings.maxHr],
+    () =>
+      performanceManagementChart(rides, {
+        defaultMaxHr: settings.maxHr,
+        restingHr: restingHrForLoad,
+      }),
+    [rides, settings.maxHr, restingHrForLoad],
   )
   const latestPmc = pmcSeries[pmcSeries.length - 1] ?? null
 
@@ -86,14 +100,14 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
   )
   const latestAcwr = useMemo(
     () =>
-      latestPmc?.atl != null && latestPmc?.ctl != null
-        ? acwr(latestPmc.atl, latestPmc.ctl)
+      latestPmc?.atl != null && latestPmc?.acwrChronic != null
+        ? acwr(latestPmc.atl, latestPmc.acwrChronic)
         : null,
     [latestPmc],
   )
   const monotonyStats = useMemo(
-    () => weeklyMonotony(rides, { defaultMaxHr: settings.maxHr }),
-    [rides, settings.maxHr],
+    () => weeklyMonotony(rides, { defaultMaxHr: settings.maxHr, restingHr: restingHrForLoad }),
+    [rides, settings.maxHr, restingHrForLoad],
   )
 
   // HRV Autonomic Bands

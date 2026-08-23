@@ -56,10 +56,21 @@ export default function DashboardScreen({
     [sortedBody],
   )
 
+  // The rider's own resting heart rate, for TRIMP's heart-rate reserve. Falls
+  // back to 60 only when nothing has been measured.
+  const restingHrForLoad = useMemo(() => {
+    const measured = sortedBody.filter((m) => m?.resting_hr != null && Number(m.resting_hr) > 0)
+    return measured.length > 0 ? Number(measured[measured.length - 1].resting_hr) : 60
+  }, [sortedBody])
+
   // 1. Performance Management Chart (PMC: CTL, ATL, TSB)
   const pmcSeries = useMemo(
-    () => performanceManagementChart(rides, { defaultMaxHr: settings.maxHr }),
-    [rides, settings.maxHr],
+    () =>
+      performanceManagementChart(rides, {
+        defaultMaxHr: settings.maxHr,
+        restingHr: restingHrForLoad,
+      }),
+    [rides, settings.maxHr, restingHrForLoad],
   )
   const latestPmc = pmcSeries[pmcSeries.length - 1] ?? null
 
@@ -105,16 +116,16 @@ export default function DashboardScreen({
   // 6. ACWR (Gabbett Workload Ratio)
   const currentAcwr = useMemo(
     () =>
-      latestPmc?.atl != null && latestPmc?.ctl != null
-        ? acwr(latestPmc.atl, latestPmc.ctl)
+      latestPmc?.atl != null && latestPmc?.acwrChronic != null
+        ? acwr(latestPmc.atl, latestPmc.acwrChronic)
         : null,
     [latestPmc],
   )
 
   // 7. Foster Monotony & Strain (7-day rolling)
   const currentMonotony = useMemo(
-    () => weeklyMonotony(rides, { defaultMaxHr: settings.maxHr }),
-    [rides, settings.maxHr],
+    () => weeklyMonotony(rides, { defaultMaxHr: settings.maxHr, restingHr: restingHrForLoad }),
+    [rides, settings.maxHr, restingHrForLoad],
   )
 
   // 8. Polarized 80/20 Distribution (Recent rides with HR track)
