@@ -13,6 +13,7 @@ import { predictedMaxHr } from '../../data/metrics.js'
 import { NUMERIC_BOUNDS, SURFACES } from '../../settings.js'
 import { ScienceNote } from '../../components/ui.jsx'
 import ConnectionsCard from './ConnectionsCard.jsx'
+import MetricGuide from '../../components/MetricGuide.jsx'
 
 /**
  * Settings, plus the two operational escapes: force a sync, and export
@@ -289,6 +290,10 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
           numbers.
         </p>
       </section>
+
+      {/* Above Account, so the reference material is reachable without
+          scrolling past a sign-out button. */}
+      <MetricGuide />
 
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 style={{ fontSize: 'var(--text-base)' }}>Account</h3>

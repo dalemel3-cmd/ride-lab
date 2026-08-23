@@ -243,8 +243,13 @@ export default function App() {
         </div>
       </main>
 
+      {/* Settings is appended here rather than living in NAV, because the
+          sidebar renders it as a separate item below the main group. Leaving it
+          out of this list made Settings unreachable on a phone: the sidebar is
+          display:none below 768px, so the only way in was typing the #settings
+          hash by hand — on the device this app is actually used on. */}
       <nav className="bottom-nav" aria-label="Main">
-        {NAV.map(({ key, label, Icon }) => (
+        {[...NAV, { key: 'settings', label: 'Settings', Icon: SettingsIcon }].map(({ key, label, Icon }) => (
           <button
             key={key}
             className="nav-item"

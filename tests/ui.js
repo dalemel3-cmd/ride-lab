@@ -135,7 +135,14 @@ async function main() {
   console.log('\nApp shell')
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
   await page.waitForSelector('.bottom-nav', { timeout: 15000 })
-  check('bottom nav has six destinations', await page.locator('.nav-item').count(), 6)
+  check('bottom nav has seven destinations', await page.locator('.nav-item').count(), 7)
+  // Settings used to be reachable only from the sidebar, which is display:none
+  // below 768px — so on a phone the only way in was typing the #settings hash.
+  check(
+    'settings is reachable on a phone',
+    await page.locator('.nav-item', { hasText: 'Settings' }).isVisible(),
+    true,
+  )
   // Headings are uppercased by CSS, so compare case-insensitively.
   check(
     'lands on the athlete cockpit',
@@ -393,6 +400,41 @@ async function main() {
     /Segments are found automatically/.test(routesText),
     true,
   )
+
+  console.log('\nMetrics & method')
+  // :visible matters here. Both navs are in the DOM at every width — the
+  // sidebar is display:none on a phone rather than absent — so an unfiltered
+  // locator resolves to the hidden desktop button and waits forever. Filtering
+  // on visibility is also what makes this a real test of phone reachability:
+  // it fails if the only route to Settings is one a phone cannot take.
+  await page.locator('.sidebar-item:visible, .nav-item:visible', { hasText: 'Settings' }).first().click()
+  await page.waitForSelector('h2')
+  await page.waitForTimeout(400)
+  const settingsText = (await page.locator('.app-main').innerText()).toLowerCase()
+
+  // A case study nobody can check is a blog post. Each headline metric has to
+  // name its own method and its own source.
+  check('the guide is present', settingsText.includes('metrics & method'), true)
+  for (const metric of ['cardiac cost', 'resting heart rate', 'hrv (rmssd)', 'fitness (ctl)']) {
+    check(`${metric} is documented`, settingsText.includes(metric), true)
+  }
+
+  // Opened rather than read through the collapsed element: innerText returns
+  // only what is rendered, so a closed <details> reports its summary alone.
+  // Clicking it also proves the disclosure itself works.
+  const cardiacEntry = page.locator('details', { hasText: 'Cardiac cost' }).first()
+  await cardiacEntry.locator('summary').click()
+  const guideDetail = (await cardiacEntry.innerText()).toLowerCase()
+  check('the detail is real, not a stub', guideDetail.includes('what it measures'), true)
+  check('and it cites a source', guideDetail.includes('source'), true)
+  // Cardiac cost is the one metric here that is not a published index. Saying so
+  // is the difference between a case study and a dashboard.
+  check(
+    'cardiac cost admits what it is not',
+    guideDetail.includes('closest honest substitute'),
+    true,
+  )
+  await page.screenshot({ path: 'tests/screenshot-settings.png', fullPage: true })
 
   console.log('\nLayout')
   const overflow = await page.evaluate(

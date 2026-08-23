@@ -141,6 +141,18 @@ h3 {
   color: var(--color-accent);
 }
 
+/* Seven destinations on a narrow phone put "PROGRESS" and "SETTINGS" shoulder
+   to shoulder. Tighten the label rather than drop a destination: the icon
+   carries recognition and the word is confirmation, so it can lose a little
+   size before it loses its job. The 58px touch target is untouched. */
+@media (max-width: 420px) {
+  .nav-item {
+    font-size: 9px;
+    letter-spacing: 0.01em;
+    padding: 8px 1px;
+  }
+}
+
 .sidebar {
   display: none;
 }
