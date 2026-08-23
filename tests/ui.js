@@ -150,12 +150,12 @@ async function main() {
     'athlete cockpit',
   )
 
-  // The route library should self-seed on an empty account.
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem('ridelab_routes') ?? '[]').length > 0, {
-    timeout: 10000,
-  })
-  const seeded = await page.evaluate(() => JSON.parse(localStorage.getItem('ridelab_routes')).length)
-  check('seeds the Bentonville route library', seeded > 0, true)
+  // Nothing is seeded any more. The trail library moved to Strava; this app
+  // keeps only the comparison Strava cannot make.
+  const seededRoutes = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('ridelab_routes') ?? '[]').length,
+  )
+  check('no trail library is planted on a new account', seededRoutes, 0)
 
   console.log('\nReadiness on an empty account')
   // No rides and no measurements means nothing to judge readiness from. This
@@ -384,12 +384,23 @@ async function main() {
   )
   check('the report does not end on a bare heading', /##\s*5\.[^\n]*\n*\s*$/.test(report), false)
 
-  console.log('\nRoutes')
-  await page.locator('.nav-item', { hasText: 'Routes' }).click()
-  await page.waitForSelector('article.card')
+  console.log('\nRepeats')
+  await page.locator('.nav-item', { hasText: 'Repeats' }).click()
+  await page.waitForSelector('h2')
+  await page.waitForTimeout(400)
   const routesText = await page.locator('.app-main').innerText()
-  check('the route library lists Slaughter Pen', routesText.includes('Slaughter Pen'), true)
-  check('per-route ride counts appear', routesText.includes('Ridden'), true)
+  // One ride was logged above, so there is nothing to compare yet — but the
+  // course it was ridden on is a candidate for a second attempt, and saying so
+  // is the whole point of the screen.
+  check('the screen states why repeating a course matters', /same ground twice/i.test(routesText), true)
+  check(
+    'a single ride is offered as a repeat candidate',
+    routesText.includes('Slaughter Pen Classic Loop'),
+    true,
+  )
+  check('and the empty comparison says what would fill it', /No course ridden twice yet/i.test(routesText), true)
+  // The trail library is gone: no difficulty grades, no navigation.
+  check('no trail library remains', /Navigate in Google Maps/i.test(routesText), false)
   // The ride logged above was entered by hand, so it carries no GPS track and
   // there is nothing to match. The card must say that rather than crash or
   // imply a segment exists.
@@ -400,6 +411,7 @@ async function main() {
     /Segments are found automatically/.test(routesText),
     true,
   )
+  await page.screenshot({ path: 'tests/screenshot-repeats.png', fullPage: true })
 
   console.log('\nMetrics & method')
   // :visible matters here. Both navs are in the DOM at every width — the
@@ -441,8 +453,6 @@ async function main() {
     () => document.documentElement.scrollWidth > window.innerWidth + 1,
   )
   check('the page never scrolls sideways on a phone', overflow, false)
-
-  await page.screenshot({ path: 'tests/screenshot-routes.png', fullPage: true })
 
   await browser.close()
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { RpePicker } from '../../components/ui.jsx'
 import { SURFACES } from '../../settings.js'
 import { toDateString, toTimeString, wallTimeToISO } from '../../data/dates.js'
@@ -11,7 +11,7 @@ import { toDateString, toTimeString, wallTimeToISO } from '../../data/dates.js'
  * nulls. The one field worth nagging about is RPE, since it costs nothing to
  * record and carries most of the training-load signal.
  */
-export default function RideForm({ routes, settings, initial, onSave, onCancel }) {
+export default function RideForm({ rides = [], settings, initial, onSave, onCancel }) {
   const [form, setForm] = useState(() => ({
     date: initial?.date ?? toDateString(),
     time: initial?.time ?? toTimeString(),
@@ -37,9 +37,36 @@ export default function RideForm({ routes, settings, initial, onSave, onCancel }
     return Number.isFinite(n) ? n : null
   }
 
+  // Distinct courses already ridden, newest first, each carrying that ride's
+  // own numbers. Suggesting what has been ridden — rather than a catalogue of
+  // trails — is what keeps repeat names spelled identically, which is the only
+  // thing the repeat comparison has to match on.
+  const priorRoutes = useMemo(() => {
+    const byName = new Map()
+    for (const ride of [...rides].sort((a, b) =>
+      String(b.ridden_at).localeCompare(String(a.ridden_at)),
+    )) {
+      const name = ride.route_name?.trim()
+      if (!name) continue
+      const key = name.toLowerCase()
+      if (byName.has(key)) continue
+      byName.set(key, {
+        name,
+        distance_mi: ride.distance_mi,
+        elevation_ft: ride.elevation_ft,
+        surface: ride.surface,
+      })
+    }
+    return [...byName.values()]
+  }, [rides])
+
   function handleRouteChange(event) {
     const name = event.target.value
-    const match = routes.find((r) => r.name === name)
+    // Matched against courses already ridden rather than a trail library. That
+    // is the same list the Repeats screen compares against, so picking a
+    // suggestion here is what turns the next ride into a controlled comparison
+    // instead of a near-miss spelling of an earlier one.
+    const match = priorRoutes.find((r) => r.name === name)
     // `||` would treat a typed 0 as empty and overwrite it — rare for distance,
     // but entirely normal for elevation on the flat Greenway.
     const keepOrFill = (current, fallback) => (current === '' || current === null || current === undefined ? (fallback ?? '') : current)
@@ -47,7 +74,8 @@ export default function RideForm({ routes, settings, initial, onSave, onCancel }
     setForm((f) => ({
       ...f,
       route_name: name,
-      // Prefill from the route library, but never overwrite something typed.
+      // Prefill from the last time this course was ridden, never overwriting
+      // something already typed.
       distance_mi: keepOrFill(f.distance_mi, match?.distance_mi),
       elevation_ft: keepOrFill(f.elevation_ft, match?.elevation_ft),
       surface: match?.surface ?? f.surface,
@@ -96,13 +124,13 @@ export default function RideForm({ routes, settings, initial, onSave, onCancel }
           <input
             id="route"
             list="route-options"
-            placeholder="Pick one or type a new route"
+            placeholder="Repeat a course, or name a new one"
             value={form.route_name}
             onChange={handleRouteChange}
           />
           <datalist id="route-options">
-            {routes.map((r) => (
-              <option key={r.id} value={r.name} />
+            {priorRoutes.map((r) => (
+              <option key={r.name} value={r.name} />
             ))}
           </datalist>
         </div>

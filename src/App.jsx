@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { Activity, Bike, HeartPulse, NotebookPen, Map, TrendingUp, Settings as SettingsIcon } from 'lucide-react'
-import { loadTable, syncQueue, saveRow, queueLength, TABLES } from './data/store.js'
-import { loadSettings, saveSettings, SEED_ROUTES } from './settings.js'
+import { Activity, Bike, HeartPulse, NotebookPen, Repeat, TrendingUp, Settings as SettingsIcon } from 'lucide-react'
+import { loadTable, syncQueue, queueLength, TABLES } from './data/store.js'
+import { loadSettings, saveSettings } from './settings.js'
 
 // Each screen is split out so the first paint on a phone only pays for the one
 // being looked at — Progress in particular drags in all of Recharts.
@@ -9,7 +9,7 @@ const DashboardScreen = lazy(() => import('./features/dashboard/DashboardScreen.
 const RideLogScreen = lazy(() => import('./features/rides/RideLogScreen.jsx'))
 const BodyCompScreen = lazy(() => import('./features/body/BodyCompScreen.jsx'))
 const JournalScreen = lazy(() => import('./features/journal/JournalScreen.jsx'))
-const RoutesScreen = lazy(() => import('./features/routes/RoutesScreen.jsx'))
+const RepeatsScreen = lazy(() => import('./features/routes/RepeatsScreen.jsx'))
 const ProgressScreen = lazy(() => import('./features/progress/ProgressScreen.jsx'))
 const SettingsScreen = lazy(() => import('./features/settings/SettingsScreen.jsx'))
 
@@ -18,26 +18,31 @@ const NAV = [
   { key: 'rides', label: 'Rides', Icon: Bike },
   { key: 'body', label: 'Body', Icon: HeartPulse },
   { key: 'journal', label: 'Journal', Icon: NotebookPen },
-  { key: 'routes', label: 'Routes', Icon: Map },
+  { key: 'repeats', label: 'Repeats', Icon: Repeat },
   { key: 'progress', label: 'Progress', Icon: TrendingUp },
 ]
 
 const VALID_SCREENS = new Set([...NAV.map((n) => n.key), 'settings'])
 
-// Marks that the starter route library has been planted once on this device.
-const ROUTES_SEEDED_KEY = 'ridelab_routes_seeded'
+// The Repeats screen was called Routes while it was a trail library. A bookmark
+// or home-screen shortcut pointing at #routes should still land somewhere real
+// rather than silently falling through to Today.
+const SCREEN_ALIASES = { routes: 'repeats' }
+
+const resolveScreen = (hash) => {
+  const key = SCREEN_ALIASES[hash] ?? hash
+  return VALID_SCREENS.has(key) ? key : null
+}
 
 export default function App() {
   const [screen, setScreenState] = useState(() => {
-    const fromHash = window.location.hash.replace('#', '')
-    return VALID_SCREENS.has(fromHash) ? fromHash : 'today'
+    return resolveScreen(window.location.hash.replace('#', '')) ?? 'today'
   })
 
   const [settings, setSettings] = useState(loadSettings)
   const [rides, setRides] = useState([])
   const [bodyComp, setBodyComp] = useState([])
   const [journal, setJournal] = useState([])
-  const [routes, setRoutes] = useState([])
   const [pending, setPending] = useState(queueLength)
   const [toast, setToast] = useState(null)
 
@@ -50,8 +55,8 @@ export default function App() {
 
   useEffect(() => {
     const onHashChange = () => {
-      const next = window.location.hash.replace('#', '')
-      if (VALID_SCREENS.has(next)) setScreenState(next)
+      const next = resolveScreen(window.location.hash.replace('#', ''))
+      if (next) setScreenState(next)
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -63,65 +68,15 @@ export default function App() {
   }, [])
 
   const refresh = useCallback(async () => {
-    const [rd, bc, jn, rt] = await Promise.all([
+    const [rd, bc, jn] = await Promise.all([
       loadTable(TABLES.rides),
       loadTable(TABLES.bodyComp),
       loadTable(TABLES.journal),
-      loadTable(TABLES.routes),
     ])
 
     setRides(rd.rows)
     setBodyComp(bc.rows)
     setJournal(jn.rows)
-
-    // Starter routes are planted once, on a genuinely new account, and never
-    // again.
-    //
-    // Seeding by "which names are missing" instead re-creates any starter route
-    // the rider has deleted, on the very next refresh — and refresh runs on
-    // load, after every save, and after every sync, so a deleted route is
-    // effectively undeletable. That bug was fixed once already; the marker
-    // below is what prevents it, and it has to be *read*, not merely written.
-    //
-    // Wanting them back later is a real thing to want, which is what the
-    // "Seed Routes" button on the Routes screen is for. That is a decision the
-    // rider makes, not one the app makes for them every few seconds.
-    let alreadySeeded = true
-    try {
-      alreadySeeded = localStorage.getItem(ROUTES_SEEDED_KEY) !== null
-    } catch {
-      /* private mode — treat as seeded rather than seeding on every load */
-    }
-
-    const existingNames = new Set(rt.rows.map((r) => r.name.toLowerCase()))
-    const missingSeeds = alreadySeeded
-      ? []
-      : SEED_ROUTES.filter((r) => !existingNames.has(r.name.toLowerCase()))
-
-    if (missingSeeds.length > 0 && !rt.fromCache) {
-      const seeded = [...rt.rows]
-      for (const route of missingSeeds) {
-        const { row } = await saveRow(TABLES.routes, route)
-        seeded.push(row)
-      }
-      try {
-        localStorage.setItem(ROUTES_SEEDED_KEY, '3')
-      } catch {
-        /* private mode */
-      }
-      setRoutes(seeded)
-    } else {
-      // Mark a pre-existing library as seeded too, so an account that already
-      // has routes never triggers the first-run path.
-      if (!alreadySeeded && !rt.fromCache) {
-        try {
-          localStorage.setItem(ROUTES_SEEDED_KEY, '3')
-        } catch {
-          /* private mode */
-        }
-      }
-      setRoutes(rt.rows)
-    }
 
     setPending(queueLength())
   }, [])
@@ -170,7 +125,6 @@ export default function App() {
     rides,
     bodyComp,
     journal,
-    routes,
     refresh,
     showToast,
     setPending,
@@ -234,7 +188,7 @@ export default function App() {
             {screen === 'rides' && <RideLogScreen {...shared} />}
             {screen === 'body' && <BodyCompScreen {...shared} />}
             {screen === 'journal' && <JournalScreen {...shared} />}
-            {screen === 'routes' && <RoutesScreen {...shared} onNavigate={setScreen} />}
+            {screen === 'repeats' && <RepeatsScreen {...shared} />}
             {screen === 'progress' && <ProgressScreen {...shared} />}
             {screen === 'settings' && (
               <SettingsScreen {...shared} onUpdateSettings={handleUpdateSettings} />

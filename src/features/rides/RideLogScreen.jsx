@@ -20,7 +20,7 @@ import { fireConfetti } from '../../components/confetti.js'
  * training model worth following — seeing "this week: 3 rides, 24 mi" is what
  * actually drives the next decision.
  */
-export default function RideLogScreen({ rides, routes, settings, refresh, showToast, setPending }) {
+export default function RideLogScreen({ rides, settings, refresh, showToast, setPending }) {
   const [mode, setMode] = useState('list') // list | form | record
   const [editing, setEditing] = useState(null)
   const [prefill, setPrefill] = useState(null)
@@ -160,7 +160,7 @@ export default function RideLogScreen({ rides, routes, settings, refresh, showTo
           <h2>{editing ? 'Edit ride' : 'Log ride'}</h2>
         </div>
         <RideForm
-          routes={routes}
+          rides={rides}
           settings={settings}
           initial={
             editing
