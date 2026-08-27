@@ -141,9 +141,13 @@ async function syncFitbit(admin: ReturnType<typeof adminClient>, userId: string,
       resting_hr: v.resting_hr ?? null,
       weight_lbs: v.weight_lbs ?? null,
       body_fat_pct: v.body_fat_pct ?? null,
-      // Never auto-set: the baseline is a deliberate choice about when the
-      // study starts, not whichever day happened to sync first.
-      is_baseline: false,
+      // is_baseline is deliberately absent, not set to false. An upsert only
+      // writes the columns it is given, so omitting it lets the column keep
+      // whatever the rider chose. Sending `false` here re-wrote that choice on
+      // every sync — the marker was set on 23 August and silently erased the
+      // next time the data refreshed, taking every "vs baseline" comparison in
+      // the study with it. A new row still starts false, from the column
+      // default.
     }))
 
   if (bodyRows.length > 0) {
@@ -479,8 +483,9 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
       resting_hr: v.resting_hr ?? null,
       hrv_ms: v.hrv_ms ?? null,
       vo2_max: v.vo2_max ?? null,
-      // Never automatic: which day starts the study is a decision.
-      is_baseline: false,
+      // Omitted rather than set — see the note in the Fitbit sync above. An
+      // upsert writes only the columns present, so leaving this out preserves
+      // the rider's chosen baseline instead of clearing it on every run.
     }))
 
   if (bodyRows.length > 0) {
