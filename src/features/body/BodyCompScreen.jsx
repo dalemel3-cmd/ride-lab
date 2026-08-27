@@ -5,6 +5,7 @@ import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { trendDelta, estimateVo2Max } from '../../data/metrics.js'
 import { toDateString, formatShortDate } from '../../data/dates.js'
 import { StatGrid, StatTile, EmptyState, ScienceNote } from '../../components/ui.jsx'
+import PhotoLog from './PhotoLog.jsx'
 
 /**
  * Body composition over the study.
@@ -285,6 +286,8 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
           })}
         </section>
       )}
+
+      <PhotoLog showToast={showToast} />
 
       {bodyComp.length > 0 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
