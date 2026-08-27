@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   BarChart,
   Bar,
@@ -15,7 +15,7 @@ import {
   ReferenceArea,
   ReferenceLine,
 } from 'recharts'
-import { Download, Flame } from 'lucide-react'
+import { Download, FileText, Flame, Image as ImageIcon } from 'lucide-react'
 import {
   weeklyRollup,
   summarize,
@@ -46,6 +46,8 @@ import ZoneBar from '../../components/ZoneBar.jsx'
 import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 import StudyReadiness from '../../components/StudyReadiness.jsx'
 import StudyHeadline from '../../components/StudyHeadline.jsx'
+import StudyReport from './StudyReport.jsx'
+import { downloadShareCard } from '../../data/shareCard.js'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
 
@@ -57,7 +59,8 @@ const tooltipStyle = {
   boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
 }
 
-export default function ProgressScreen({ rides, bodyComp, settings }) {
+export default function ProgressScreen({ rides, bodyComp, settings, showToast }) {
+  const [showReport, setShowReport] = useState(false)
   const totals = useMemo(() => summarize(rides), [rides])
   const weeks = useMemo(() => weeklyRollup(rides), [rides])
 
@@ -410,6 +413,49 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     maturity,
   ])
 
+  /**
+   * The square graphic, built from the same figures the screen shows.
+   *
+   * The headline is chosen rather than templated: a claim about adaptation only
+   * appears once there is enough riding behind it to support one. Early on the
+   * card says what was done, which is true, instead of what it means, which is
+   * not known yet.
+   */
+  function handleShareCard() {
+    const adaptationClaimIsSupported =
+      efficiencyTrend && efficiencyTrend.change < 0 && totals.rides >= 4
+
+    const headline = adaptationClaimIsSupported
+      ? `${Math.abs(efficiencyTrend.change)} fewer heartbeats per mile than week one.`
+      : `Week ${currentWeek} of ${settings.caseStudyWeeks}. Measuring what riding does to a body.`
+
+    const cardStats = [
+      { value: String(totals.distanceMi), unit: 'mi', label: 'Distance' },
+      { value: formatDuration(totals.durationMin), unit: '', label: 'Saddle time' },
+      { value: String(totals.rides), unit: '', label: 'Rides' },
+      efficiencyTrend
+        ? { value: String(efficiencyTrend.last), unit: 'bpm/mi', label: 'Cardiac cost' }
+        : { value: totals.elevationFt.toLocaleString(), unit: 'ft', label: 'Climbing' },
+    ]
+
+    downloadShareCard(
+      {
+        week: currentWeek,
+        weeks: settings.caseStudyWeeks,
+        stats: cardStats,
+        headline,
+        footnote: adaptationClaimIsSupported
+          ? `Cardiac cost is heartbeats spent per mile on ${surfaceLabel || 'the same surface'} — the same work for fewer beats.`
+          : 'Heart rate, body composition and training load, tracked over 16 weeks.',
+        bikeName: settings.bikeName,
+      },
+      `ride-lab-week-${currentWeek}.png`,
+    ).then((ok) => {
+      if (!ok) showToast?.('Could not render the image', 'error')
+      else showToast?.('Saved a 1080×1080 card to your downloads')
+    })
+  }
+
   function handleExportCaseStudy() {
     const provisional = (ready, needDays) =>
       ready ? '' : ` *(provisional — ${maturity.days}d of ${needDays}d history)*`
@@ -531,20 +577,58 @@ export default function ProgressScreen({ rides, bodyComp, settings }) {
     <div className="screen">
       <div className="screen-header">
         <h2>Progress</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             className="btn btn-primary"
+            onClick={() => setShowReport(true)}
+            style={{ padding: '8px 14px' }}
+            title="Open the case study as a printable report, then save it as a PDF"
+          >
+            <FileText size={16} aria-hidden="true" /> Report
+          </button>
+          <button
+            className="btn"
+            onClick={handleShareCard}
+            style={{ padding: '8px 14px' }}
+            title="Save a 1080×1080 graphic for Instagram"
+          >
+            <ImageIcon size={16} aria-hidden="true" /> Card
+          </button>
+          <button
+            className="btn"
             onClick={handleExportCaseStudy}
             style={{ padding: '8px 14px' }}
-            title="Download formatted Case Study Markdown Report"
+            title="Download the case study as Markdown"
           >
-            <Download size={16} aria-hidden="true" /> Export Study
+            <Download size={16} aria-hidden="true" /> Markdown
           </button>
           <span className="muted" style={{ fontSize: 'var(--text-xs)', fontWeight: 600 }}>
             W{currentWeek}/{settings.caseStudyWeeks}
           </span>
         </div>
       </div>
+
+      {showReport && (
+        <StudyReport
+          onClose={() => setShowReport(false)}
+          settings={settings}
+          currentWeek={currentWeek}
+          totals={totals}
+          weeks={weeks}
+          maturity={maturity}
+          efficiencyTrend={efficiencyTrend}
+          surfaceLabel={surfaceLabel}
+          polarizedAudit={polarizedStudyAudit}
+          latestPmc={latestPmc}
+          latestAcwr={latestAcwr}
+          monotonyStats={monotonyStats}
+          latestBody={latestBody}
+          baselineBody={baselineBody}
+          latestHrvBand={latestHrvBand}
+          routeGains={routeGains}
+          substrateTotals={substrateTotals}
+        />
+      )}
 
       {/* The findings, before the instrumentation. Everything below this card
           is the evidence for it. */}

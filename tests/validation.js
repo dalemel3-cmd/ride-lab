@@ -35,6 +35,7 @@ import {
   hrZone,
 } from '../src/data/metrics.js'
 import { elevationGainMeters } from '../src/data/track.js'
+import { toDateString } from '../src/data/dates.js'
 
 let passed = 0
 let failed = 0
@@ -107,10 +108,19 @@ function refHrvBand(values) {
   return { baseline: Math.exp(mean), lower: Math.exp(mean - swc), upper: Math.exp(mean + swc) }
 }
 
+/**
+ * A calendar date N days before today, anchored to the program timezone.
+ *
+ * Walking back from `new Date()` in UTC is not the same thing: run at 01:00 UTC
+ * the UTC date is already tomorrow in Chicago terms, so the fixture's newest
+ * ride landed a day beyond the series the app builds and the row counts
+ * disagreed. Anchoring both to the same notion of "today" is what makes this
+ * test give the same answer at any hour.
+ */
 const isoDaysAgo = (n) => {
-  const d = new Date()
-  d.setUTCDate(d.getUTCDate() - n)
-  return d.toISOString().slice(0, 10)
+  const base = new Date(`${toDateString()}T12:00:00Z`)
+  base.setUTCDate(base.getUTCDate() - n)
+  return base.toISOString().slice(0, 10)
 }
 
 // ---------------------------------------------------------------------------

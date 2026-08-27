@@ -366,7 +366,7 @@ async function main() {
   // stated an ACWR of 5.15 as "Danger Zone" in week one, when that ratio was
   // measuring an empty 28-day denominator rather than the rider.
   const downloadPromise = page.waitForEvent('download')
-  await page.locator('button', { hasText: 'Export Study' }).click()
+  await page.locator('button', { hasText: 'Markdown' }).click()
   const download = await downloadPromise
   const report = readFileSync(await download.path(), 'utf8')
 
@@ -383,6 +383,43 @@ async function main() {
     true,
   )
   check('the report does not end on a bare heading', /##\s*5\.[^\n]*\n*\s*$/.test(report), false)
+
+  console.log('\nStudy report and share card')
+  // Both exports have to agree with what the screen says, so they are opened
+  // from the screen rather than built from their own copy of the numbers.
+  await page.locator('.nav-item', { hasText: 'Progress' }).click()
+  await page.waitForSelector('h2')
+  await page.waitForTimeout(600)
+
+  await page.locator('button', { hasText: 'Report' }).click()
+  await page.waitForSelector('.study-report')
+  const reportText = (await page.locator('.study-report').innerText()).toLowerCase()
+  check('the report opens as a document', reportText.includes('cycling physiological case study'), true)
+  check('it carries the method and its sources', reportText.includes('banister'), true)
+  check('it states the data maturity', reportText.includes('data maturity'), true)
+  check('it says what it cannot measure yet', reportText.includes('no course has been ridden twice'), true)
+  // Printing hides the app rather than printing the phone shell around it.
+  const printReady = await page.evaluate(() => document.body.classList.contains('report-open'))
+  check('print mode is armed while the report is open', printReady, true)
+
+  await page.locator('.study-report button', { hasText: 'Close' }).click()
+  await page.waitForTimeout(200)
+  check('closing puts the app back', await page.locator('.study-report').count(), 0)
+  check('and disarms print mode', await page.evaluate(() => document.body.classList.contains('report-open')), false)
+
+  // Downloaded rather than imported: the built preview serves no /src, and the
+  // download is the path the rider actually takes. PNG dimensions live in the
+  // IHDR chunk at bytes 16-23, so the file itself proves the size.
+  const cardPromise = page.waitForEvent('download')
+  await page.locator('button', { hasText: 'Card' }).click()
+  const cardDownload = await cardPromise
+  const png = readFileSync(await cardDownload.path())
+
+  check('a PNG is produced', png.subarray(1, 4).toString(), 'PNG')
+  check('square at Instagram resolution', [png.readUInt32BE(16), png.readUInt32BE(20)], [1080, 1080])
+  // A blank canvas compresses to almost nothing; a drawn one does not.
+  check('and something was actually drawn on it', png.length > 8000, true)
+  check('named for the study week', /ride-lab-week-\d+\.png/.test(cardDownload.suggestedFilename()), true)
 
   console.log('\nRepeats')
   await page.locator('.nav-item', { hasText: 'Repeats' }).click()

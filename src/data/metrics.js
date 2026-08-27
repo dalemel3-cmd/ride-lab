@@ -566,7 +566,12 @@ export function performanceManagementChart(
   if (dates.length === 0) return []
 
   const startDate = new Date(`${dates[0]}T12:00:00Z`)
-  const endDate = new Date()
+  // The last day of the series is today in the rider's own timezone, compared
+  // as a date string rather than as an instant. Comparing timestamps against
+  // `new Date()` silently dropped today's row until noon UTC — so a ride logged
+  // before 7am local carried no load in the chart for another hour, and the
+  // same code produced different output depending on when it ran.
+  const endDateStr = toDateString()
   // λ = 2/(N+1), the exponentially-weighted moving average used by Williams et
   // al. (2017) for this family of metrics. Worth stating because it is not the
   // only convention: TrainingPeaks decays by 1 − e^(−1/N), which is roughly
@@ -583,8 +588,8 @@ export function performanceManagementChart(
   const series = []
 
   const cur = new Date(startDate)
-  while (cur <= endDate) {
-    const dateStr = cur.toISOString().slice(0, 10)
+  let dateStr = cur.toISOString().slice(0, 10)
+  while (dateStr <= endDateStr) {
     const load = dailyLoads.get(dateStr) ?? 0
 
     ctl = ctl * (1 - ctlDecay) + load * ctlDecay
@@ -624,6 +629,7 @@ export function performanceManagementChart(
     })
 
     cur.setUTCDate(cur.getUTCDate() + 1)
+    dateStr = cur.toISOString().slice(0, 10)
   }
 
   return series

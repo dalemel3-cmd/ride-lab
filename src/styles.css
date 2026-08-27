@@ -569,3 +569,227 @@ label {
     margin: 14mm;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Case study report
+   ---------------------------------------------------------------------------
+   A document rather than a screen: served white-on-dark while it is being read
+   in the app, and ink-on-paper the moment it is printed. It is portalled to
+   document.body so print can simply hide the app root beside it rather than
+   fighting a nested overlay's containing blocks.
+   --------------------------------------------------------------------------- */
+.study-report {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow-y: auto;
+  background: var(--color-bg);
+  padding: 16px 16px 64px;
+}
+
+.report-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0 12px;
+  background: var(--color-bg);
+}
+
+.report-page {
+  max-width: 720px;
+  margin: 0 auto;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.report-header {
+  border-bottom: 2px solid var(--color-text);
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+}
+
+.report-title {
+  margin: 0 0 6px;
+  font-size: var(--text-2xl);
+  line-height: 1.15;
+}
+
+.report-sub {
+  margin: 0 0 4px;
+  color: var(--color-text-muted);
+}
+
+.report-meta {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.report-callout {
+  border-left: 3px solid var(--color-accent);
+  padding: 10px 14px;
+  margin: 0 0 24px;
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+}
+
+.report-section {
+  margin-bottom: 26px;
+  /* A section split across a page break reads as two half-thoughts. */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.report-h2 {
+  margin: 0 0 10px;
+  font-size: var(--text-base);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 5px;
+}
+
+.report-h3 {
+  margin: 14px 0 6px;
+  font-size: var(--text-sm);
+}
+
+.report-num {
+  color: var(--color-accent);
+  margin-right: 4px;
+}
+
+.report-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 16px;
+  padding: 5px 0;
+  border-bottom: 1px dotted var(--color-border);
+}
+
+.report-row-label {
+  color: var(--color-text-muted);
+}
+
+.report-row-value {
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.report-row-note {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.report-note {
+  margin: 10px 0 0;
+  color: var(--color-text-muted);
+}
+
+.report-route {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  margin-bottom: 12px;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.report-table th,
+.report-table td {
+  text-align: left;
+  padding: 5px 8px 5px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.report-table th {
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.report-refs {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.report-refs li {
+  margin-bottom: 6px;
+}
+
+.report-footer {
+  margin-top: 28px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+@media print {
+  /* While a report is open the app itself is not part of the document. The
+     report is a sibling of the app root, so this is a single rule rather than
+     a fight with nested overflow and fixed positioning. */
+  body.report-open .app-layout {
+    display: none !important;
+  }
+
+  body.report-open .study-report {
+    position: static !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .report-toolbar {
+    display: none !important;
+  }
+
+  .report-page {
+    max-width: none;
+    color: #111111 !important;
+    font-size: 10.5pt;
+  }
+
+  .report-header {
+    border-bottom-color: #111111 !important;
+  }
+
+  .report-callout {
+    background: #f4f6f8 !important;
+    border-left-color: #666666 !important;
+  }
+
+  .report-num {
+    color: #111111 !important;
+  }
+
+  .report-sub,
+  .report-meta,
+  .report-row-label,
+  .report-row-note,
+  .report-note,
+  .report-refs,
+  .report-footer,
+  .report-callout,
+  .report-table th {
+    color: #444444 !important;
+  }
+
+  .report-row,
+  .report-h2,
+  .report-table th,
+  .report-table td,
+  .report-footer {
+    border-color: #cccccc !important;
+  }
+}
