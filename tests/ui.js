@@ -421,6 +421,42 @@ async function main() {
   check('and something was actually drawn on it', png.length > 8000, true)
   check('named for the study week', /ride-lab-week-\d+\.png/.test(cardDownload.suggestedFilename()), true)
 
+  // Nothing may touch the frame. The card is generated from whatever the ride
+  // happened to be, so widths are not knowable in advance — a long value like
+  // "28h 40m" at a fixed size ran straight past the right edge, and a footnote
+  // that wrapped to two lines crossed the rule above the footer.
+  //
+  // Measured on the PNG that was actually downloaded, decoded back into a
+  // canvas in the page. Re-rendering from source would test a different code
+  // path from the one the rider gets, and the built preview serves no /src.
+  const framing = await page.evaluate(
+    (dataUrl) =>
+      new Promise((resolve) => {
+        const img = new Image()
+        img.addEventListener('load', () => {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.width
+          canvas.height = img.height
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0)
+          // A 24px gutter just inside the frame must stay empty on both sides.
+          const strip = (x) => {
+            const { data } = ctx.getImageData(x, 0, 24, canvas.height)
+            let lit = 0
+            for (let i = 0; i < data.length; i += 4) {
+              if (data[i] + data[i + 1] + data[i + 2] > 260) lit += 1
+            }
+            return lit
+          }
+          resolve({ left: strip(8), right: strip(canvas.width - 32) })
+        })
+        img.src = dataUrl
+      }),
+    `data:image/png;base64,${png.toString('base64')}`,
+  )
+  check('nothing spills past the left frame', framing.left, 0)
+  check('nothing spills past the right frame', framing.right, 0)
+
   console.log('\nRepeats')
   await page.locator('.nav-item', { hasText: 'Repeats' }).click()
   await page.waitForSelector('h2')

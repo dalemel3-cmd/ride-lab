@@ -416,26 +416,39 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
   /**
    * The square graphic, built from the same figures the screen shows.
    *
-   * The headline is chosen rather than templated: a claim about adaptation only
-   * appears once there is enough riding behind it to support one. Early on the
-   * card says what was done, which is true, instead of what it means, which is
-   * not known yet.
+   * Written for a general audience rather than a cycling one. "Cardiac cost,
+   * 786 bpm/mi" is precise and means nothing to most people scrolling past it,
+   * so the card says the same thing in words anyone can read and leaves the
+   * vocabulary to the report. Miles, hours, rides and calories need no
+   * explanation; heartbeats per mile becomes a sentence about a heart doing
+   * less work.
+   *
+   * The headline is still chosen rather than templated: a claim about
+   * adaptation only appears once four rides stand behind a falling cardiac
+   * cost. Before that the card says what was done, which is true, rather than
+   * what it means, which is not known yet.
    */
   function handleShareCard() {
     const adaptationClaimIsSupported =
       efficiencyTrend && efficiencyTrend.change < 0 && totals.rides >= 4
 
     const headline = adaptationClaimIsSupported
-      ? `${Math.abs(efficiencyTrend.change)} fewer heartbeats per mile than week one.`
-      : `Week ${currentWeek} of ${settings.caseStudyWeeks}. Measuring what riding does to a body.`
+      ? `Every mile now costs my heart ${Math.abs(efficiencyTrend.change)} fewer beats.`
+      : `${totals.rides} ride${totals.rides === 1 ? '' : 's'}. ${totals.distanceMi} miles. Still finding out what this does to me.`
 
+    // Four things a non-cyclist reads without stopping. Calories land better
+    // than climbing for a general feed, so they lead when available.
     const cardStats = [
-      { value: String(totals.distanceMi), unit: 'mi', label: 'Distance' },
-      { value: formatDuration(totals.durationMin), unit: '', label: 'Saddle time' },
+      { value: String(totals.distanceMi), unit: 'mi', label: 'Miles ridden' },
+      { value: formatDuration(totals.durationMin), unit: '', label: 'Time on the bike' },
       { value: String(totals.rides), unit: '', label: 'Rides' },
-      efficiencyTrend
-        ? { value: String(efficiencyTrend.last), unit: 'bpm/mi', label: 'Cardiac cost' }
-        : { value: totals.elevationFt.toLocaleString(), unit: 'ft', label: 'Climbing' },
+      substrateTotals?.totalKcal
+        ? {
+            value: substrateTotals.totalKcal.toLocaleString(),
+            unit: 'cal',
+            label: 'Energy burned',
+          }
+        : { value: totals.elevationFt.toLocaleString(), unit: 'ft', label: 'Climbed' },
     ]
 
     downloadShareCard(
@@ -445,8 +458,8 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
         stats: cardStats,
         headline,
         footnote: adaptationClaimIsSupported
-          ? `Cardiac cost is heartbeats spent per mile on ${surfaceLabel || 'the same surface'} — the same work for fewer beats.`
-          : 'Heart rate, body composition and training load, tracked over 16 weeks.',
+          ? 'Same route, same effort, fewer heartbeats to get round it. That is fitness, measured rather than felt.'
+          : 'A 16-week experiment on one body: what riding actually changes, tracked every single week.',
         bikeName: settings.bikeName,
       },
       `ride-lab-week-${currentWeek}.png`,

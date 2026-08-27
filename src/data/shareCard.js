@@ -41,24 +41,37 @@ function text(ctx, str, x, y, { font, color, align = 'left', baseline = 'alphabe
   return ctx.measureText(str).width
 }
 
-/** Wrap a paragraph to a width, returning the y position after the last line. */
-function paragraph(ctx, str, x, y, maxWidth, lineHeight, opts) {
-  const words = String(str).split(/\s+/)
+/**
+ * Break a string into lines that fit a width.
+ *
+ * Split from the drawing so a caller can find out how tall a block will be
+ * before deciding where to start it. Anything anchored to the bottom of the
+ * card has to know its own height first — the footnote used to be drawn from a
+ * fixed y and a second line ran straight through the rule above the footer.
+ */
+function wrapLines(ctx, str, maxWidth, font) {
+  ctx.font = font
+  const lines = []
   let line = ''
-  let cursor = y
 
-  ctx.font = opts.font
-  for (const word of words) {
+  for (const word of String(str).split(/\s+/)) {
     const candidate = line ? `${line} ${word}` : word
     if (ctx.measureText(candidate).width > maxWidth && line) {
-      text(ctx, line, x, cursor, opts)
+      lines.push(line)
       line = word
-      cursor += lineHeight
     } else {
       line = candidate
     }
   }
-  if (line) {
+  if (line) lines.push(line)
+  return lines
+}
+
+/** Draw wrapped text from a top edge, returning the y after the last line. */
+function paragraph(ctx, str, x, y, maxWidth, lineHeight, opts) {
+  const lines = wrapLines(ctx, str, maxWidth, opts.font)
+  let cursor = y
+  for (const line of lines) {
     text(ctx, line, x, cursor, opts)
     cursor += lineHeight
   }
@@ -70,14 +83,33 @@ function paragraph(ctx, str, x, y, maxWidth, lineHeight, opts) {
  *
  * The unit sits beside the figure at body weight rather than display weight, so
  * "39.8" reads as the number and "mi" reads as its unit at a glance.
+ *
+ * The figure shrinks to fit its column rather than running past the frame. A
+ * card is generated from whatever the ride happened to be, so the width is not
+ * knowable in advance: "39.8" and "28h 40m" both land here, and the second one
+ * at a fixed 128px overflowed the edge of the graphic.
  */
-function stat(ctx, { value, unit, label }, x, y) {
+function stat(ctx, { value, unit, label }, x, y, maxWidth) {
+  const unitFont = `44px ${FONT_BODY}`
+  const unitGap = 12
+
+  ctx.font = unitFont
+  const unitWidth = unit ? ctx.measureText(unit).width + unitGap : 0
+
+  let size = 128
+  const MIN_SIZE = 72
+  while (size > MIN_SIZE) {
+    ctx.font = `${size}px ${FONT_DISPLAY}`
+    if (ctx.measureText(value).width + unitWidth <= maxWidth) break
+    size -= 4
+  }
+
   const width = text(ctx, value, x, y, {
-    font: `128px ${FONT_DISPLAY}`,
+    font: `${size}px ${FONT_DISPLAY}`,
     color: INK,
   })
   if (unit) {
-    text(ctx, unit, x + width + 12, y, { font: `44px ${FONT_BODY}`, color: MUTED })
+    text(ctx, unit, x + width + unitGap, y, { font: unitFont, color: MUTED })
   }
   text(ctx, label.toUpperCase(), x, y + 46, {
     font: `600 26px ${FONT_BODY}`,
@@ -141,14 +173,28 @@ export function drawShareCard({
   // them down rather than overlapping.
   const gridTop = Math.max(afterHeadline + 90, 560)
   const columnX = [margin, SIZE / 2 + 20]
+  // Each column runs to the right edge of the content area; the left one stops
+  // short of the right column so the two can never collide.
+  const columnWidth = [SIZE / 2 + 20 - margin - 24, SIZE - margin - (SIZE / 2 + 20)]
   stats.slice(0, 4).forEach((s, i) => {
-    stat(ctx, s, columnX[i % 2], gridTop + Math.floor(i / 2) * 190)
+    stat(ctx, s, columnX[i % 2], gridTop + Math.floor(i / 2) * 190, columnWidth[i % 2])
   })
 
+  // Anchored to the rule above the footer and grown upward, so a footnote that
+  // wraps to two or three lines pushes its own top up instead of running
+  // through the rule below it. Capped at three lines: past that it is a caption
+  // rather than a card.
   if (footnote) {
-    paragraph(ctx, footnote, margin, SIZE - 168, SIZE - margin * 2, 36, {
-      font: `28px ${FONT_BODY}`,
-      color: MUTED,
+    const lineHeight = 36
+    const footLines = wrapLines(ctx, footnote, SIZE - margin * 2, `28px ${FONT_BODY}`).slice(0, 3)
+    const lastBaseline = SIZE - 176
+    const firstBaseline = lastBaseline - (footLines.length - 1) * lineHeight
+
+    footLines.forEach((line, i) => {
+      text(ctx, line, margin, firstBaseline + i * lineHeight, {
+        font: `28px ${FONT_BODY}`,
+        color: MUTED,
+      })
     })
   }
 
