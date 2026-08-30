@@ -180,10 +180,48 @@ async function syncRideWithGps(
 
   if (rides.length === 0) return { connected: true, imported: 0, skipped }
 
+  // Do not import a ride that is already in the log under another source.
+  //
+  // The upsert key is (user_id, source, external_id), which makes re-running
+  // this sync idempotent but says nothing about a ride the rider already
+  // entered by hand or imported from a GPX file. Those carry source = null, so
+  // the first sync filed a second copy of every ride beside the original — six
+  // rides became eleven, and the duplicates were the worse half: no RPE, and on
+  // four of five, no heart rate either.
+  //
+  // Start time is the reliable signal. The same ride recorded twice differed by
+  // under a minute; nobody starts two rides a quarter of an hour apart.
+  const DUPLICATE_WINDOW_MS = 15 * 60 * 1000
+  const { data: existingRides } = await admin
+    .from('rides')
+    .select('ridden_at, source, external_id')
+    .eq('user_id', userId)
+    .gte('ridden_at', new Date(cutoffMs).toISOString())
+
+  const alreadyLogged = (ride: Record<string, unknown>) => {
+    const started = Date.parse(String(ride.ridden_at))
+    if (!Number.isFinite(started)) return false
+    return (existingRides ?? []).some((row: Record<string, unknown>) => {
+      // A row this provider wrote itself is the upsert's business, not this
+      // check's — otherwise every re-sync would report its own rides as
+      // duplicates and import nothing ever again.
+      if (row.source === 'ridewithgps' && row.external_id === ride.external_id) return false
+      const other = Date.parse(String(row.ridden_at))
+      return Number.isFinite(other) && Math.abs(other - started) < DUPLICATE_WINDOW_MS
+    })
+  }
+
+  const fresh = rides.filter((r) => !alreadyLogged(r))
+  const duplicates = rides.length - fresh.length
+
+  if (fresh.length === 0) {
+    return { connected: true, imported: 0, skipped, alreadyInLog: duplicates }
+  }
+
   // ignoreDuplicates so a later sync cannot wipe an RPE typed in by hand.
   const { error } = await admin
     .from('rides')
-    .upsert(rides, { onConflict: 'user_id,source,external_id', ignoreDuplicates: true })
+    .upsert(fresh, { onConflict: 'user_id,source,external_id', ignoreDuplicates: true })
   if (error) throw error
 
   await admin
@@ -194,12 +232,19 @@ async function syncRideWithGps(
 
   // Reported because it is the reason this provider is here at all: a ride
   // without a heart-rate trace contributes nothing to time in zones or the
-  // polarized audit, and the rider should be able to see that at a glance.
-  const withHeartRate = rides.filter((r) =>
+  // polarized audit, and the rider should be able to see that at a glance
+  // rather than discovering it weeks later in an empty chart.
+  const withHeartRate = fresh.filter((r) =>
     trackHasHeartRate((r.track ?? []) as TrackPoint[]),
   ).length
 
-  return { connected: true, imported: rides.length, withHeartRate, skipped }
+  return {
+    connected: true,
+    imported: fresh.length,
+    withHeartRate,
+    skipped,
+    alreadyInLog: duplicates,
+  }
 }
 
 async function syncFitbit(admin: ReturnType<typeof adminClient>, userId: string, sinceDays: number) {
