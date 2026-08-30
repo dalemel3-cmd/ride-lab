@@ -4,6 +4,7 @@ import {
   Zap,
   Heart,
   TrendingUp,
+  TrendingDown,
   Plus,
   Bike,
 } from 'lucide-react'
@@ -28,7 +29,7 @@ import {
   daysBetween,
   recordDate,
 } from '../../data/dates.js'
-import { FormStatusBadge } from '../../components/ui.jsx'
+import { FormStatusBadge, toneColor } from '../../components/ui.jsx'
 import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 
 export default function DashboardScreen({
@@ -37,13 +38,16 @@ export default function DashboardScreen({
   settings,
   onNavigate,
 }) {
-  // Sort chronological oldest-first
+  // Sort chronological oldest-first. Coerced through String() because a row
+  // that reached this screen from the offline queue rather than the server may
+  // not carry every column, and a bare `.localeCompare` on undefined takes the
+  // whole screen down rather than dropping one ride.
   const sortedRides = useMemo(
-    () => [...rides].sort((a, b) => a.ridden_at.localeCompare(b.ridden_at)),
+    () => [...rides].sort((a, b) => String(a.ridden_at).localeCompare(String(b.ridden_at))),
     [rides],
   )
   const sortedBody = useMemo(
-    () => [...bodyComp].sort((a, b) => a.measured_at.localeCompare(b.measured_at)),
+    () => [...bodyComp].sort((a, b) => String(a.measured_at).localeCompare(String(b.measured_at))),
     [bodyComp],
   )
 
@@ -101,6 +105,10 @@ export default function DashboardScreen({
   const bySurface = useMemo(() => efficiencyBySurface(rides), [rides])
   const primarySurface = bySurface[0] ?? null
   const efficiencyTrend = primarySurface?.trend ?? null
+  // Rides actually behind the trend: one surface, and only those that recorded
+  // an average heart rate. Six logged rides can sit behind a three-ride line.
+  const trendPoints = primarySurface?.points?.length ?? 0
+  const surfaceLabel = (primarySurface?.surface ?? '').replace('-', ' ')
 
   // 5. Weekly Volume & Load this week
   const weeks = useMemo(() => weeklyRollup(rides), [rides])
@@ -126,10 +134,27 @@ export default function DashboardScreen({
     [rides, settings.maxHr, restingHrForLoad],
   )
 
+  // How much history the load models actually have.
+  //
+  // Same gate the Progress screen and the exported report use. Without it this
+  // screen — the one the app opens on — announces "Danger Zone: spike in acute
+  // fatigue exceeds chronic capacity" in the first fortnight, when the ratio is
+  // really describing a denominator that is still mostly zeros.
+  const maturity = useMemo(() => {
+    const firstRide = sortedRides[0]
+    const days = firstRide ? daysBetween(recordDate(firstRide), toDateString()) + 1 : 0
+    return { days, ctlReady: days >= 42, acwrReady: days >= 28, monotonyReady: days >= 7 }
+  }, [sortedRides])
+
   // 8. Polarized 80/20 Distribution (Recent rides with HR track)
+  //
+  // Sliced off `sortedRides`, not `rides`. The store hands rides back
+  // newest-first, so `rides.slice(-10)` took the ten *oldest* — pinning this
+  // card to the opening fortnight of the study permanently once the log passed
+  // ten rides, while still calling itself "recent".
   const recentZones = useMemo(
-    () => combineZoneTimes(rides.slice(-10).map((r) => timeInZones(r.track, settings.maxHr))),
-    [rides, settings.maxHr],
+    () => combineZoneTimes(sortedRides.slice(-10).map((r) => timeInZones(r.track, settings.maxHr))),
+    [sortedRides, settings.maxHr],
   )
   const polarizedRecentAudit = useMemo(
     () => (recentZones ? polarizedAudit(recentZones) : null),
@@ -331,7 +356,12 @@ export default function DashboardScreen({
               Form (TSB)
             </span>
             {latestPmc && (
-              <FormStatusBadge status={latestPmc.status.split('/')[0]} tone={latestPmc.tone} />
+              <FormStatusBadge
+                status={
+                  maturity.ctlReady ? latestPmc.status.split('/')[0] : `${maturity.days} of 42 days`
+                }
+                tone={maturity.ctlReady ? latestPmc.tone : 'neutral'}
+              />
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
@@ -417,7 +447,19 @@ export default function DashboardScreen({
             >
               Cardiac Cost
             </span>
-            <TrendingUp size={15} color="var(--status-success)" style={{ flexShrink: 0 }} />
+            {/* The arrow used to point up in success green whatever the trend
+                did — so a cardiac cost climbing 40 beats a mile was decorated
+                as good news. Falling is the improvement here, so the icon
+                follows the direction the number actually moved. */}
+            {efficiencyTrend ? (
+              efficiencyTrend.improved ? (
+                <TrendingDown size={15} color="var(--status-success)" style={{ flexShrink: 0 }} />
+              ) : (
+                <TrendingUp size={15} color="var(--status-warn)" style={{ flexShrink: 0 }} />
+              )
+            ) : (
+              <TrendingUp size={15} color="var(--color-text-muted)" style={{ flexShrink: 0 }} />
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span
@@ -443,8 +485,11 @@ export default function DashboardScreen({
                 : 'var(--color-text-muted)',
             }}
           >
+            {/* The ride count is part of the claim, not a footnote. A −101
+                beats/mile swing off three rides is a different statement from
+                the same swing off thirty. */}
             {efficiencyTrend
-              ? `${efficiencyTrend.change > 0 ? '+' : ''}${efficiencyTrend.change} (${efficiencyTrend.pctChange}%) vs baseline`
+              ? `${efficiencyTrend.change > 0 ? '+' : ''}${efficiencyTrend.change} (${efficiencyTrend.pctChange}%) across ${trendPoints} ${surfaceLabel} ride${trendPoints === 1 ? '' : 's'}`
               : 'Aerobic efficiency on primary surface'}
           </span>
         </div>
@@ -498,13 +543,9 @@ export default function DashboardScreen({
             gap: 8,
             minWidth: 0,
             borderLeft: `3px solid ${
-              currentAcwr?.tone === 'good'
-                ? 'var(--status-success)'
-                : currentAcwr?.tone === 'warn'
-                  ? 'var(--status-warn)'
-                  : currentAcwr?.tone === 'bad'
-                    ? 'var(--status-error)'
-                    : 'var(--color-border)'
+              maturity.acwrReady
+                ? toneColor(currentAcwr?.tone, 'var(--color-border)')
+                : 'var(--color-border)'
             }`,
           }}
         >
@@ -521,7 +562,10 @@ export default function DashboardScreen({
               ACWR (Gabbett)
             </span>
             {currentAcwr && (
-              <FormStatusBadge status={currentAcwr.label} tone={currentAcwr.tone} />
+              <FormStatusBadge
+                status={maturity.acwrReady ? currentAcwr.label : `${maturity.days} of 28 days`}
+                tone={maturity.acwrReady ? currentAcwr.tone : 'neutral'}
+              />
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
@@ -530,24 +574,25 @@ export default function DashboardScreen({
                 fontFamily: 'var(--font-display)',
                 fontSize: 'var(--text-3xl)',
                 lineHeight: 1,
-                color:
-                  currentAcwr?.tone === 'good'
-                    ? 'var(--status-success)'
-                    : currentAcwr?.tone === 'warn'
-                      ? 'var(--status-warn)'
-                      : currentAcwr?.tone === 'bad'
-                        ? 'var(--status-error)'
-                        : 'var(--color-text)',
+                color: maturity.acwrReady ? toneColor(currentAcwr?.tone) : 'var(--color-text)',
               }}
             >
               {currentAcwr ? currentAcwr.ratio : '—'}
             </span>
+            {/* 7-day acute over 28-day chronic — Gabbett's published windows.
+                Not ATL/CTL: CTL is the 42-day fitness average, and using it as
+                the denominator is exactly the mistake that reported an ACWR of
+                5.15 in week one. */}
             <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-              ATL / CTL
+              7d / 28d
             </span>
           </div>
           <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
-            {currentAcwr ? currentAcwr.description : 'Awaiting load history'}
+            {!currentAcwr
+              ? 'Awaiting load history'
+              : maturity.acwrReady
+                ? currentAcwr.description
+                : 'The chronic side of this ratio is a 28-day average that is still filling, so the number is arithmetic rather than a finding yet.'}
           </span>
         </div>
 
@@ -561,13 +606,9 @@ export default function DashboardScreen({
             gap: 8,
             minWidth: 0,
             borderLeft: `3px solid ${
-              currentMonotony?.tone === 'good'
-                ? 'var(--status-success)'
-                : currentMonotony?.tone === 'warn'
-                  ? 'var(--status-warn)'
-                  : currentMonotony?.tone === 'bad'
-                    ? 'var(--status-error)'
-                    : 'var(--color-border)'
+              maturity.monotonyReady
+                ? toneColor(currentMonotony?.tone, 'var(--color-border)')
+                : 'var(--color-border)'
             }`,
           }}
         >
@@ -584,7 +625,12 @@ export default function DashboardScreen({
               Monotony & Strain
             </span>
             {currentMonotony && (
-              <FormStatusBadge status={currentMonotony.label} tone={currentMonotony.tone} />
+              <FormStatusBadge
+                status={
+                  maturity.monotonyReady ? currentMonotony.label : `${maturity.days} of 7 days`
+                }
+                tone={maturity.monotonyReady ? currentMonotony.tone : 'neutral'}
+              />
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
@@ -593,14 +639,7 @@ export default function DashboardScreen({
                 fontFamily: 'var(--font-display)',
                 fontSize: 'var(--text-3xl)',
                 lineHeight: 1,
-                color:
-                  currentMonotony?.tone === 'good'
-                    ? 'var(--status-success)'
-                    : currentMonotony?.tone === 'warn'
-                      ? 'var(--status-warn)'
-                      : currentMonotony?.tone === 'bad'
-                        ? 'var(--status-error)'
-                        : 'var(--color-text)',
+                color: maturity.monotonyReady ? toneColor(currentMonotony?.tone) : 'var(--color-text)',
               }}
             >
               {currentMonotony ? currentMonotony.monotony : '—'}
@@ -610,7 +649,11 @@ export default function DashboardScreen({
             </span>
           </div>
           <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
-            {currentMonotony ? currentMonotony.description : '7-day load variance index'}
+            {!currentMonotony
+              ? '7-day load variance index'
+              : maturity.monotonyReady
+                ? currentMonotony.description
+                : 'Needs a full week of days before the variance means anything.'}
           </span>
         </div>
       </div>

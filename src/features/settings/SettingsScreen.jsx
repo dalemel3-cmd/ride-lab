@@ -272,7 +272,7 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
                   style={{ padding: '6px 10px', minHeight: 36 }}
                   onClick={() => {
                     if (!window.confirm('Discard this entry permanently? It cannot be recovered.')) return
-                    discardQueuedEntry(entry.id)
+                    discardQueuedEntry(entry.id, entry.table)
                     refreshQueueView()
                     setPending(queueLength())
                     showToast('Entry discarded')

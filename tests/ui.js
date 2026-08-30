@@ -527,6 +527,62 @@ async function main() {
   )
   check('the page never scrolls sideways on a phone', overflow, false)
 
+  console.log('\nKeyboard focus')
+  // Buttons had no focus style at all — only inputs did — so every control in
+  // the app was reachable by keyboard and invisible once reached.
+  // Driven with a real Tab press rather than el.focus(), because :focus-visible
+  // deliberately does not match programmatic focus — asserting on .focus() would
+  // test the wrong state and pass whether or not the rule exists.
+  await page.keyboard.press('Tab')
+  const tabbedOutline = await page.evaluate(() => {
+    const el = document.activeElement
+    if (!el || el === document.body) return null
+    const style = getComputedStyle(el)
+    return {
+      tag: el.tagName,
+      width: style.outlineWidth,
+      style: style.outlineStyle,
+      color: style.outlineColor,
+    }
+  })
+  // The rule is on :focus-visible rather than on .btn, so it covers whatever
+  // the tab order actually reaches — buttons, summaries, links, inputs alike.
+  check(
+    'tabbing lands on a real control',
+    ['BUTTON', 'SUMMARY', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tabbedOutline?.tag),
+    true,
+  )
+  check('and that control draws a focus ring', tabbedOutline?.width, '2px')
+  check('a solid one', tabbedOutline?.style, 'solid')
+  // --color-accent, #22d3ee.
+  check('in the app accent, not a browser default', tabbedOutline?.color, 'rgb(34, 211, 238)')
+
+  console.log('\nPrint stylesheet')
+  await page.emulateMedia({ media: 'print' })
+  const printStyles = await page.evaluate(() => {
+    const heading = document.querySelector('.screen-header h2')
+    const muted = document.querySelector('.muted')
+    const read = (el) => {
+      if (!el) return null
+      const s = getComputedStyle(el)
+      return { fill: s.webkitTextFillColor || s.getPropertyValue('-webkit-text-fill-color'), color: s.color }
+    }
+    return { heading: read(heading), muted: read(muted) }
+  })
+  // The heading is a white-to-silver gradient clipped to the glyphs on screen.
+  // On paper that is white text on a white page — the title of every printed
+  // sheet was invisible.
+  check(
+    'the page heading is not transparent on paper',
+    /transparent|rgba\(0, 0, 0, 0\)/.test(printStyles.heading?.fill ?? ''),
+    false,
+  )
+  check('and prints as near-black ink', printStyles.heading?.color, 'rgb(17, 17, 17)')
+  // The print block used to override a --color-muted that nothing reads, so
+  // every caption went to paper in pale blue.
+  check('muted text prints as dark grey, not pale blue', printStyles.muted?.color, 'rgb(68, 68, 68)')
+  await page.emulateMedia({ media: 'screen' })
+
   await browser.close()
 
   console.log(`\n${passed} passed, ${failed} failed\n`)

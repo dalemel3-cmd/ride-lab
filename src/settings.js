@@ -16,7 +16,12 @@ export const SETTINGS_STORAGE_KEY = 'ridelab_settings'
 export const DEFAULT_SETTINGS = {
   riderName: '',
   bikeName: 'Poseidon X Gen 3',
-  homeBase: '1105 SW Grand Blvd, Bentonville, AR',
+  // Town, not street address. A default is compiled into the JS bundle and
+  // committed to the repository, so it is served to anyone who loads the app —
+  // which is the wrong place for a home address in a project whose output is
+  // published to Instagram. Anything more precise belongs in the field on the
+  // Settings screen, where it stays on the rider's own device.
+  homeBase: 'Bentonville, AR',
 
   age: 30,
   // Measured max beats a formula every time; predictedMaxHr(age) is the

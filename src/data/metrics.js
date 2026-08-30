@@ -848,15 +848,22 @@ export function substrateOxidation(avgHrValue, durationMin, maxHrValue) {
 /**
  * Acute:Chronic Workload Ratio (ACWR - Dr. Tim Gabbett model).
  *
- * ACWR = ATL / CTL
+ * ACWR = acute load (7-day) / chronic load (28-day)
+ *
+ * The denominator is deliberately not CTL, and the parameter is named
+ * `chronicLoad` to keep it that way. CTL is this app's 42-day fitness average;
+ * Gabbett's ratio and its exponentially-weighted form both compare 7 days
+ * against 28. Pass `acwrChronic` from performanceManagementChart. Passing `ctl`
+ * still type-checks and still returns a number — it just returns the wrong one,
+ * which is how this came to report an ACWR of 5.15 in week one.
  *
  * Sweet Spot (0.8 - 1.3): progressive overload with lowest relative injury risk.
  * Caution Zone (1.3 - 1.5): accelerated fatigue accumulation.
  * Danger Zone (> 1.5): critical spike in acute fatigue; heightened risk of soft tissue injury / overreaching.
  */
-export function acwr(atl, ctl, thresholds = ACWR_THRESHOLDS) {
+export function acwr(atl, chronicLoad, thresholds = ACWR_THRESHOLDS) {
   const a = toNumber(atl)
-  const c = toNumber(ctl)
+  const c = toNumber(chronicLoad)
 
   if (a === null || c === null || c < 1) {
     return null
@@ -979,7 +986,6 @@ export function weeklyMonotony(
 ) {
   if (!Array.isArray(rides) || rides.length === 0) return null
 
-  const end = endDate ? new Date(endDate) : new Date()
   const dailyMap = new Map()
 
   for (const ride of rides) {
@@ -996,12 +1002,30 @@ export function weeklyMonotony(
     }
   }
 
+  // The window is a run of calendar days in the program timezone, because that
+  // is what `recordDate` keyed the loads by above. Stepping the cursor with
+  // `toISOString()` read the UTC date instead, so from 7pm Central onward every
+  // bucket shifted a day forward: the oldest training day dropped out of the
+  // window and a future day of zero load came in. The same seven rides scored
+  // 444.2 total load and 17.45 monotony in the morning and 386.1 / 2.43 that
+  // evening — a different verdict from the same data on the same day.
+  //
+  // A bare `YYYY-MM-DD` is taken at face value; anything else is resolved to a
+  // calendar date the same way a ride is.
+  const endStr =
+    typeof endDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(endDate)
+      ? endDate.slice(0, 10)
+      : toDateString(endDate ? new Date(endDate) : new Date())
+
+  // Noon UTC, so adding days can never cross a day boundary by rounding.
+  const cursor = new Date(`${endStr}T12:00:00Z`)
+  if (Number.isNaN(cursor.getTime())) return null
+  cursor.setUTCDate(cursor.getUTCDate() - (days - 1))
+
   const dailyLoads = []
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const targetDate = new Date(end)
-    targetDate.setDate(targetDate.getDate() - i)
-    const dateStr = targetDate.toISOString().slice(0, 10)
-    dailyLoads.push(dailyMap.get(dateStr) ?? 0)
+  for (let i = 0; i < days; i += 1) {
+    dailyLoads.push(dailyMap.get(cursor.toISOString().slice(0, 10)) ?? 0)
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
 
   return fosterMonotonyAndStrain(dailyLoads)
@@ -1010,9 +1034,18 @@ export function weeklyMonotony(
 /**
  * Polarized Training 80/20 Distribution Audit (Dr. Stephen Seiler 3-Domain Model).
  *
- * Domain 1 (Low / Aerobic Base): 5-Zone Z1 + Z2 (<75% max HR)
- * Domain 2 (Moderate / Threshold / Grey Zone): 5-Zone Z3 (75-85% max HR)
- * Domain 3 (High / Severe / VO2 max): 5-Zone Z4 + Z5 (>85% max HR)
+ * Domain 1 (Low / Aerobic Base): 5-Zone Z1 + Z2 — below 70% of max HR
+ * Domain 2 (Moderate / Threshold / Grey Zone): 5-Zone Z3 — 70–80% of max HR
+ * Domain 3 (High / Severe / VO2 max): 5-Zone Z4 + Z5 — above 80% of max HR
+ *
+ * Those cut-offs come from HR_ZONES above, not from Seiler. His domains are
+ * bounded by the two ventilatory thresholds, which sit nearer 80% and 88% of
+ * max HR for a trained rider and have to be measured rather than assumed. This
+ * header used to claim 75%/85% — neither the model's numbers nor the code's —
+ * which is the kind of detail that costs a study its credibility when someone
+ * checks it. Substituting fixed percentages for measured thresholds makes the
+ * "low" domain harder to fill, so the audit errs toward calling a distribution
+ * threshold-heavy rather than flattering it.
  *
  * Archetype Classifications:
  * - Polarized: Low >= 75% AND High >= Mod (Seiler gold standard)

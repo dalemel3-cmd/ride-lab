@@ -211,7 +211,13 @@ export default function StudyReport({
               <Row
                 label="Training monotony"
                 value={monotonyStats?.monotony}
-                note={monotonyStats ? `strain ${monotonyStats.strain}` : null}
+                note={
+                  monotonyStats
+                    ? `strain ${monotonyStats.strain}${
+                        maturity.monotonyReady ? '' : ` — ${provisional(false, 7)}`
+                      }`
+                    : null
+                }
               />
             </>
           ) : (

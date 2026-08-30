@@ -425,6 +425,47 @@ const mockRideList = [
 const weekMonotonyResult = weeklyMonotony(mockRideList, { endDate: '2026-08-22' })
 check('weeklyMonotony helper produces valid output', weekMonotonyResult !== null, true)
 
+// A plain YYYY-MM-DD is a calendar date, not an instant to be re-zoned. Parsed
+// as UTC midnight and converted to America/Chicago it lands on the day before,
+// which would silently drop the most recent day of training out of the window.
+const namedDayWindow = weeklyMonotony(
+  [{ ridden_at: '2026-08-22T18:00:00Z', avg_hr: 150, duration_min: 60 }],
+  { endDate: '2026-08-22' },
+)
+check('a bare date string ends the window on that date', namedDayWindow !== null, true)
+check('so a ride on that date is inside the window', namedDayWindow.totalLoad > 0, true)
+
+// The window is a run of calendar days in the program timezone, matching the
+// keys the loads were stored under. Stepping it with toISOString() read the UTC
+// date instead, so once the clock passed 7pm Central every bucket shifted a day
+// forward: the oldest training day fell out and a future day of zero load came
+// in. The same seven rides scored 444.2 load / 17.45 monotony in the morning
+// and 386.1 / 2.43 that evening.
+const sevenEveningRides = Array.from({ length: 7 }, (_, i) => ({
+  // 19:00 America/Chicago is 00:00Z the next day, so each of these carries a
+  // UTC date one ahead of the day it was actually ridden.
+  ridden_at: `2026-08-${String(25 + i).padStart(2, '0')}T00:00:00Z`,
+  avg_hr: 130 + i,
+  duration_min: 60,
+}))
+const morningRead = weeklyMonotony(sevenEveningRides, {
+  endDate: new Date('2026-08-30T14:00:00Z'), // 09:00 Central
+})
+const eveningRead = weeklyMonotony(sevenEveningRides, {
+  endDate: new Date('2026-08-31T02:00:00Z'), // 21:00 Central — the same Chicago day
+})
+check(
+  'total load is the same morning and evening on one calendar day',
+  morningRead.totalLoad,
+  eveningRead.totalLoad,
+)
+check('and so is monotony', morningRead.monotony, eveningRead.monotony)
+check(
+  'all seven consecutive training days land inside the window',
+  morningRead.totalLoad > 400,
+  true,
+)
+
 console.log('\nPolarized Training 80/20 Distribution Audit')
 const polarizedMock = [
   { zone: 1, seconds: 1200 },

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Activity, Bike, HeartPulse, NotebookPen, Repeat, TrendingUp, Settings as SettingsIcon } from 'lucide-react'
 import { loadTable, syncQueue, queueLength, TABLES } from './data/store.js'
 import { loadSettings, saveSettings } from './settings.js'
@@ -46,12 +46,22 @@ export default function App() {
   const [pending, setPending] = useState(queueLength)
   const [toast, setToast] = useState(null)
 
+  // The scrolling element is <main>, not the window, so moving between screens
+  // has to reset it explicitly. Without this, opening Rides from the bottom of
+  // a long Progress page lands you halfway down the ride list with no idea the
+  // screen changed.
+  const mainRef = useRef(null)
+
   // Hash routing: the back button works and a screen can be linked to, without
   // pulling in a router for six screens.
   const setScreen = useCallback((next) => {
     window.location.hash = next
     setScreenState(next)
   }, [])
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 })
+  }, [screen])
 
   useEffect(() => {
     const onHashChange = () => {
@@ -62,10 +72,18 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
+  // One timer, replaced rather than stacked. Each call used to start its own
+  // and none was ever cleared, so two toasts in quick succession — "Ride saved"
+  // then "Synced 1 pending entry" — left the first one's timer running, and it
+  // dismissed the second message early. It also fired after unmount.
+  const toastTimer = useRef(null)
   const showToast = useCallback((text, tone = 'ok') => {
     setToast({ text, tone })
-    setTimeout(() => setToast(null), 2800)
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 2800)
   }, [])
+
+  useEffect(() => () => clearTimeout(toastTimer.current), [])
 
   const refresh = useCallback(async () => {
     const [rd, bc, jn] = await Promise.all([
@@ -132,7 +150,11 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <nav className="sidebar" aria-label="Main">
+      {/* Two navigations exist because one is the phone layout and the other
+          the desktop one, and only ever one is visible. They were both labelled
+          "Main", which a screen reader reads out as two identical landmarks —
+          so they are named for what they are instead. */}
+      <nav className="sidebar" aria-label="Sidebar">
         <h1
           style={{
             padding: '0 14px 16px',
@@ -147,6 +169,7 @@ export default function App() {
             key={key}
             className="sidebar-item"
             data-active={screen === key}
+            aria-current={screen === key ? 'page' : undefined}
             onClick={() => setScreen(key)}
           >
             <Icon size={18} aria-hidden="true" />
@@ -156,6 +179,7 @@ export default function App() {
         <button
           className="sidebar-item"
           data-active={screen === 'settings'}
+          aria-current={screen === 'settings' ? 'page' : undefined}
           onClick={() => setScreen('settings')}
         >
           <SettingsIcon size={18} aria-hidden="true" />
@@ -163,7 +187,7 @@ export default function App() {
         </button>
       </nav>
 
-      <main className="app-main">
+      <main className="app-main" ref={mainRef}>
         <div className="content-width">
           {pending > 0 && (
             <p

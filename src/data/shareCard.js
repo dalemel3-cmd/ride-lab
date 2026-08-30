@@ -28,8 +28,13 @@ const RULE = 'rgba(143, 163, 189, 0.28)'
 // The app's own faces, named exactly as styles.css loads them. A canvas takes
 // a CSS font string but does nothing to fetch one, so a mismatch here silently
 // renders the card in a fallback and it stops looking like the app.
-const FONT_DISPLAY = '"Barlow Condensed", "Arial Narrow", Impact, sans-serif'
-const FONT_BODY = 'Inter, "Helvetica Neue", Arial, sans-serif'
+// Kept in step with --font-display / --font-body in styles.css. The card is
+// generated offline as often as not, so the fallbacks have to name faces that
+// actually exist on a phone rather than trailing off into a generic sans.
+const FONT_DISPLAY =
+  '"Barlow Condensed", Oswald, "Helvetica Neue Condensed", "Arial Narrow", Impact, sans-serif'
+const FONT_BODY =
+  'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
 
 /** Draw text and return the width, so callers can lay things out beside it. */
 function text(ctx, str, x, y, { font, color, align = 'left', baseline = 'alphabetic' }) {

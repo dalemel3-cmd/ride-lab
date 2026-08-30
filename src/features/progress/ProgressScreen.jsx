@@ -51,6 +51,12 @@ import { downloadShareCard } from '../../data/shareCard.js'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
 
+/**
+ * Rides required behind a falling efficiency trend before the study will call
+ * it adaptation out loud — on the share card, and in the headline card's chip.
+ */
+const MIN_RIDES_FOR_ADAPTATION_CLAIM = 4
+
 const tooltipStyle = {
   background: 'rgba(11, 26, 43, 0.95)',
   border: '1px solid var(--color-border)',
@@ -66,7 +72,7 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
 
   // Oldest-first, and only rides carrying the fields each chart needs.
   const chronological = useMemo(
-    () => [...rides].sort((a, b) => a.ridden_at.localeCompare(b.ridden_at)),
+    () => [...rides].sort((a, b) => String(a.ridden_at).localeCompare(String(b.ridden_at))),
     [rides],
   )
 
@@ -119,7 +125,7 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
 
   // Baseline & Latest Body Comp
   const sortedBody = useMemo(
-    () => [...bodyComp].sort((a, b) => a.measured_at.localeCompare(b.measured_at)),
+    () => [...bodyComp].sort((a, b) => String(a.measured_at).localeCompare(String(b.measured_at))),
     [bodyComp],
   )
   const baselineBody = useMemo(
@@ -248,6 +254,16 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
   const efficiencyTrend = primarySurface?.trend ?? null
   const surfaceLabel = (primarySurface?.surface ?? '').replace('-', ' ')
 
+  // How many rides the efficiency trend is actually built from.
+  //
+  // Not the same as `totals.rides`, and using that instead was overstating the
+  // evidence in two places. The trend covers one surface, and only the rides on
+  // it that recorded an average heart rate — so a log of six rides across two
+  // surfaces, one of them missing HR, can put a three-ride trend behind a claim
+  // gated on "at least four rides". The claim has to be measured against the
+  // series that produced it.
+  const trendPoints = primarySurface?.points?.length ?? 0
+
   const studyStart = settings.caseStudyStartDate
   const daysIn = Math.max(0, daysBetween(studyStart, toDateString()))
   const currentWeek = Math.min(studyWeek(studyStart, toDateString()), settings.caseStudyWeeks)
@@ -305,7 +321,10 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
         note: better
           ? `Down ${Math.abs(efficiencyTrend.change)} beats/mile from ${efficiencyTrend.first} (${efficiencyTrend.pctChange}%). Your heart is doing the same work for fewer beats — the clearest sign the training is landing.`
           : `Up ${Math.abs(efficiencyTrend.change)} beats/mile from ${efficiencyTrend.first} (${efficiencyTrend.pctChange}%). Harder terrain, heat, or fatigue all read this way, so watch the trend rather than one ride.`,
-        pending: totals.rides < 4 ? `Only ${totals.rides} rides on this surface — treat as an early read` : null,
+        pending:
+          trendPoints < MIN_RIDES_FOR_ADAPTATION_CLAIM
+            ? `Only ${trendPoints} ride${trendPoints === 1 ? '' : 's'} on this surface with heart rate — treat as an early read`
+            : null,
       })
     } else {
       items.push({
@@ -405,7 +424,7 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
   }, [
     efficiencyTrend,
     surfaceLabel,
-    totals.rides,
+    trendPoints,
     baselineBody,
     latestBody,
     latestHrvBand,
@@ -429,8 +448,13 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
    * what it means, which is not known yet.
    */
   function handleShareCard() {
+    // Gated on the rides behind the trend, not the ride count of the whole
+    // study. This card goes out in public, so the sentence it prints has to be
+    // backed by the series it is quoting.
     const adaptationClaimIsSupported =
-      efficiencyTrend && efficiencyTrend.change < 0 && totals.rides >= 4
+      efficiencyTrend &&
+      efficiencyTrend.change < 0 &&
+      trendPoints >= MIN_RIDES_FOR_ADAPTATION_CLAIM
 
     const headline = adaptationClaimIsSupported
       ? `Every mile now costs my heart ${Math.abs(efficiencyTrend.change)} fewer beats.`
@@ -732,18 +756,34 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
               <h3 style={{ fontSize: 'var(--text-lg)' }}>Performance Management (PMC)</h3>
               <span className="muted">Banister Impulse-Response: Fitness (CTL) vs Fatigue (ATL)</span>
             </div>
-            {latestPmc && <FormStatusBadge status={latestPmc.status} tone={latestPmc.tone} />}
+            {/* The verdict waits for the window that produces it. Until CTL has
+                42 days behind it the status describes a mostly-empty average,
+                and printing "High Fatigue / Overreaching Risk" off two easy
+                rides is the kind of thing a reader spots and discounts the
+                whole document for. The export has always gated this; the screen
+                did not, so the two contradicted each other. */}
+            {latestPmc &&
+              (maturity.ctlReady ? (
+                <FormStatusBadge status={latestPmc.status} tone={latestPmc.tone} />
+              ) : (
+                <FormStatusBadge status={`Filling — ${maturity.days} of 42 days`} tone="neutral" />
+              ))}
           </div>
 
           {latestPmc && (
             <StatGrid min={110}>
-              <StatTile label="Fitness (CTL)" value={latestPmc.ctl} unit="42d" />
+              <StatTile
+                label="Fitness (CTL)"
+                value={latestPmc.ctl}
+                unit="42d"
+                hint={maturity.ctlReady ? null : `${maturity.days} of 42 days of history`}
+              />
               <StatTile label="Fatigue (ATL)" value={latestPmc.atl} unit="7d" />
               <StatTile
                 label="Form (TSB)"
                 value={latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb}
-                tone={latestPmc.tone}
-                hint={latestPmc.status}
+                tone={maturity.ctlReady ? latestPmc.tone : 'neutral'}
+                hint={maturity.ctlReady ? latestPmc.status : 'Not yet interpretable'}
               />
             </StatGrid>
           )}
@@ -785,18 +825,34 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
 
           {latestAcwr && (
             <StatGrid min={110}>
+              {/* "ATL/CTL" was the wrong formula on the label. The ratio
+                  divides 7-day acute load by a 28-day chronic load, which is
+                  what Gabbett publishes; CTL is the 42-day fitness average and
+                  using it as the denominator is the bug that reported an ACWR
+                  of 5.15 in week one. The number was fixed; the caption still
+                  told the reader it had not been. */}
               <StatTile
                 label="ACWR"
                 value={latestAcwr.ratio}
-                unit="ATL/CTL"
-                tone={latestAcwr.tone}
-                hint={latestAcwr.label}
+                unit="7d/28d"
+                tone={maturity.acwrReady ? latestAcwr.tone : 'neutral'}
+                hint={
+                  maturity.acwrReady
+                    ? latestAcwr.label
+                    : `Needs 28 days — has ${maturity.days}`
+                }
               />
               <StatTile
                 label="7-Day Monotony"
                 value={monotonyStats ? monotonyStats.monotony : '—'}
-                tone={monotonyStats?.tone ?? 'neutral'}
-                hint={monotonyStats ? monotonyStats.label : 'Daily load variance'}
+                tone={monotonyStats && maturity.monotonyReady ? monotonyStats.tone : 'neutral'}
+                hint={
+                  !monotonyStats
+                    ? 'Daily load variance'
+                    : maturity.monotonyReady
+                      ? monotonyStats.label
+                      : `Needs 7 days — has ${maturity.days}`
+                }
               />
               <StatTile
                 label="Weekly Strain"
@@ -847,8 +903,12 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
           </div>
 
           <ScienceNote title="Gabbett ACWR & Foster Monotony Frameworks">
-            Dr. Tim Gabbett’s <strong>Acute:Chronic Workload Ratio</strong> compares short-term fatigue (ATL) against long-term prepared fitness (CTL). 
-            Staying in the <strong>0.80–1.30 Sweet Spot</strong> delivers maximum adaptation with minimum soft-tissue injury risk. 
+            Dr. Tim Gabbett’s <strong>Acute:Chronic Workload Ratio</strong> compares the last 7 days
+            of training load against a rolling 28-day average of it — how much you are doing this
+            week measured against what you have been doing lately.{' '}
+            <em>Not</em> against the 42-day fitness figure above: that window fills more slowly, and
+            using it as the denominator inflates the ratio for the first six weeks of any study.
+            Staying in the <strong>0.80–1.30 Sweet Spot</strong> delivers maximum adaptation with minimum soft-tissue injury risk.
             Dr. Carl Foster’s <strong>Training Monotony Index</strong> guards against overtraining: doing identical daily rides produces high monotony (&gt;2.0), 
             which degrades immune function and adaptation even at moderate weekly volumes.
           </ScienceNote>

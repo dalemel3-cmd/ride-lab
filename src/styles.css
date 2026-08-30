@@ -6,7 +6,18 @@
  * variables, so there is exactly one place to change a colour or a radius.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
+/*
+ * The webfonts are requested from index.html, not with an `@import` here.
+ *
+ * A CSS `@import` blocks the whole stylesheet until the remote sheet resolves,
+ * so on a cold load in a dead zone — the exact situation this app is built for
+ * — the app rendered nothing until Google's request timed out. It is also not
+ * in the service worker's precache and never can be, being cross-origin.
+ *
+ * So the faces are progressive enhancement, and the fallback stacks below name
+ * real fonts that exist on iOS and Android rather than trailing off into a
+ * generic `sans-serif`. Offline, the app should look deliberate, not broken.
+ */
 
 :root {
   /* Surfaces — deep navy, so the screen is readable in bright Arkansas sun
@@ -41,8 +52,10 @@
   --zone-4: #fb923c;
   --zone-5: #f87171;
 
-  --font-display: 'Barlow Condensed', system-ui, sans-serif;
-  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Barlow Condensed', 'Oswald', 'Helvetica Neue Condensed', 'Arial Narrow',
+    system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
 
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
@@ -144,12 +157,36 @@ h3 {
 /* Seven destinations on a narrow phone put "PROGRESS" and "SETTINGS" shoulder
    to shoulder. Tighten the label rather than drop a destination: the icon
    carries recognition and the word is confirmation, so it can lose a little
-   size before it loses its job. The 58px touch target is untouched. */
+   size before it loses its job. The 58px touch target is untouched.
+
+   `min-width: 0` is what actually lets a flex item shrink below the width of
+   its own text — without it the seven labels refused to give ground and the
+   longest ones ran together edge to edge with no gutter at all. */
 @media (max-width: 420px) {
   .nav-item {
+    min-width: 0;
     font-size: 9px;
-    letter-spacing: 0.01em;
+    letter-spacing: 0;
     padding: 8px 1px;
+    gap: 2px;
+  }
+
+  /* Truncate rather than collide. A clipped "SETTING…" beneath its own icon is
+     still recognisable; two labels touching is not. */
+  .nav-item > span,
+  .nav-item {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* The common phone widths — iPhone SE 375, iPhone 15 390 — need one more step
+   down before "REPEATS PROGRESS SETTINGS" reads as three words rather than one
+   run of letters. Above 400px there is room to spare at 9px. */
+@media (max-width: 400px) {
+  .nav-item {
+    font-size: 8px;
   }
 }
 
@@ -333,6 +370,7 @@ h3 {
   font-size: var(--text-2xl);
   background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -356,6 +394,26 @@ select:focus,
 textarea:focus {
   outline: 2px solid var(--color-accent);
   outline-offset: -1px;
+}
+
+/*
+ * Keyboard focus.
+ *
+ * Only inputs had a focus ring, so every button in the app — navigation, the
+ * RPE picker, Save, Delete — was reachable by keyboard and completely invisible
+ * once reached. :focus-visible rather than :focus so a tap on a phone does not
+ * leave a ring behind on the thing you just pressed.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Inside the nav bars the ring is inset, so it is not clipped by the bar edge. */
+.nav-item:focus-visible,
+.sidebar-item:focus-visible {
+  outline-offset: -3px;
 }
 
 textarea {
@@ -495,17 +553,34 @@ label {
     print-color-adjust: exact;
   }
 
+  /* The token is --color-text-muted; this block used to redefine a
+     --color-muted that nothing reads, so every muted caption, axis label and
+     hint went to paper in #8aa4bd — pale blue on white, effectively unreadable.
+     --color-surface-raised matters too: ScienceNote and the RPE picker paint
+     their own backgrounds from it. */
   :root {
     --color-bg: #ffffff;
     --color-surface: #ffffff;
+    --color-surface-raised: #f4f6f8;
     --color-text: #111111;
-    --color-muted: #444444;
+    --color-text-muted: #444444;
     --color-border: #cccccc;
   }
 
   html,
   body {
     background: #ffffff !important;
+    color: #111111 !important;
+  }
+
+  /* The screen heading is painted as a white-to-silver gradient clipped to the
+     glyphs, which on paper is white text on a white page — the title of every
+     printed sheet was invisible. Put the ink back. */
+  .screen-header h2 {
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    -webkit-text-fill-color: #111111 !important;
     color: #111111 !important;
   }
 

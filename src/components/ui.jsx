@@ -5,14 +5,30 @@
  * six. Anything that grows past ~60 lines should move to its own module.
  */
 
+/**
+ * Tone → colour, shared by every component in this file.
+ *
+ * Kept in one place because StatTile and FormStatusBadge disagreed: the badge
+ * handled 'warn' and the tile did not, so a cautionary ACWR or a moderate
+ * monotony reading rendered in ordinary body text. The two sat side by side on
+ * Progress, one amber and one white, describing the same warning.
+ */
+export function toneColor(tone, fallback = 'var(--color-text)') {
+  switch (tone) {
+    case 'good':
+      return 'var(--status-success)'
+    case 'warn':
+      return 'var(--status-warn)'
+    case 'bad':
+      return 'var(--status-error)'
+    default:
+      return fallback
+  }
+}
+
 /** A labelled number, the basic unit of every summary row. */
 export function StatTile({ label, value, unit, tone, hint }) {
-  const color =
-    tone === 'good'
-      ? 'var(--status-success)'
-      : tone === 'bad'
-        ? 'var(--status-error)'
-        : 'var(--color-text)'
+  const color = toneColor(tone)
 
   return (
     <div
@@ -315,14 +331,10 @@ export function ReadinessDial({ readiness }) {
 
 export function FormStatusBadge({ status, tone }) {
   if (!status) return null
-  const color =
-    tone === 'good'
-      ? 'var(--status-success)'
-      : tone === 'warn'
-        ? 'var(--status-warn)'
-        : tone === 'bad'
-          ? 'var(--status-error)'
-          : 'var(--color-accent)'
+  // A pill is always tinted — it is a chip, not a run of text — so a neutral or
+  // absent tone falls back to the accent rather than to body colour, which
+  // would leave the dot and border almost invisible against the card.
+  const color = toneColor(tone, 'var(--color-accent)')
 
   return (
     <span

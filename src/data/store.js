@@ -367,8 +367,13 @@ export function stuckEntries() {
  * logged is destructive, so it only happens when they ask for it, and the
  * export in Settings is the way to keep a copy first.
  */
-export function discardQueuedEntry(id) {
-  writeQueue(readQueue().filter((op) => op.id !== id))
+export function discardQueuedEntry(id, table) {
+  // Matched on table + id, the pair `enqueue` already treats as the identity of
+  // a queued op. Ids are UUIDs so a collision across tables is not expected —
+  // but this is the one destructive operation in the app, and "not expected" is
+  // a weaker guarantee than the key the queue is actually built on. `table` is
+  // optional so an older call site still behaves as it did.
+  writeQueue(readQueue().filter((op) => !(op.id === id && (!table || op.table === table))))
 }
 
 // ---------------------------------------------------------------------------
