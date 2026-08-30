@@ -130,11 +130,22 @@ check('never invents an RPE', ride.rpe, null)
 
 console.log('\nTrack points')
 check('every point is kept', ride.track.length, 3)
-// [lat, lng, elapsedSeconds, elevationFt, hr]
-check('first point is [lat, lng, t, elevFt, hr]', ride.track[0], [44.012199, -123.073723, 0, 519, 92])
-check('time is relative to the first point, not epoch', ride.track[2][2], 6)
-// 152.9 m × 3.28084 = 501.6…
-check('elevation is converted to feet', ride.track[2][3], 502)
+// The contract src/data/track.js documents and every reader assumes:
+// [lat, lon, epochMs, elevationM, heartRate].
+check(
+  'first point is [lat, lon, epochMs, elevationM, hr]',
+  ride.track[0],
+  [44.012199, -123.073723, 1199561107000, 158.2, 92],
+)
+// Absolute, not rebased. An earlier version stored seconds-from-start, which
+// made timeInZones read a 43-minute ride as 2.6 seconds of training — and,
+// because track.js treats a time of 0 as "no timestamp", quietly dropped the
+// first point of every imported ride.
+check('time is epoch milliseconds', ride.track[2][2], 1199561113000)
+check('and six seconds separate points 1 and 3', (ride.track[2][2] - ride.track[0][2]) / 1000, 6)
+// Metres, as GPX stores them. Feet are a display-time conversion; storing them
+// here made 390 m of Ozark plateau render as 4,196 ft.
+check('elevation stays in metres', ride.track[2][3], 152.9)
 check('heart rate survives per point', ride.track.map((p) => p[4]), [92, 92, 93])
 check('so the trace is usable for time-in-zones', trackHasHeartRate(ride.track), true)
 
@@ -191,6 +202,18 @@ check(
   'a track with no timestamps still maps',
   toTrack([{ x: 1, y: 2 }, { x: 1.1, y: 2.1 }]).map((p) => p[2]),
   [null, null],
+)
+// track.js reads 0 at position 2 as "no timestamp", so writing a literal zero
+// would date the point to 1970 for anything that did not check.
+check(
+  'a zero timestamp becomes null rather than the epoch',
+  toTrack([{ x: 1, y: 2, t: 0 }])[0][2],
+  null,
+)
+check(
+  'a missing elevation stays null, not zero metres',
+  toTrack([{ x: 1, y: 2, t: 5 }])[0][3],
+  null,
 )
 check('a ride with no heart rate reports so', trackHasHeartRate(toTrack([{ x: 1, y: 2 }])), false)
 

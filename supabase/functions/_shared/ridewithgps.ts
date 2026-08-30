@@ -83,7 +83,19 @@ export function isCyclingTrip(trip: Record<string, unknown> | null | undefined):
 
 /**
  * Convert track points to the app's tuple, with time relative to the first
- * point rather than absolute epoch — which is what track.js expects.
+ * point, in the units src/data/track.js documents.
+ *
+ * That contract is `[lat, lon, epochMs, elevationM, heartRate]`, and it is not
+ * negotiable — every reader in the app (timeInZones, the elevation profile,
+ * segment detection) indexes these positions and assumes those units. The first
+ * version of this function rebased time to seconds-from-start and converted
+ * elevation to feet, inventing a second format the rest of the app cannot read:
+ * a 43-minute ride was scored as 2.6 seconds of training, and 390 m of Ozark
+ * plateau displayed as 4,196 ft.
+ *
+ * Ride with GPS gives `t` as absolute unix seconds and `e` as metres, so both
+ * conversions are trivial — the earlier code was doing extra work to get it
+ * wrong.
  */
 export function toTrack(points: unknown): TrackPoint[] {
   if (!Array.isArray(points)) return []
@@ -93,16 +105,18 @@ export function toTrack(points: unknown): TrackPoint[] {
       num((p as Record<string, unknown>).x) !== null,
   ) as Record<string, unknown>[]
 
-  const firstT = usable.map((p) => num(p.t)).find((t) => t !== null) ?? null
-
   return usable.map((p) => {
     const t = num(p.t)
     const tuple = new Array(5).fill(null) as TrackPoint
     tuple[TRACK_LAT] = num(p.y) as number
     tuple[TRACK_LNG] = num(p.x) as number
-    tuple[TRACK_TIME] = t !== null && firstT !== null ? Math.round(t - firstT) : null
-    const e = num(p.e)
-    tuple[TRACK_ELEV] = e !== null ? Math.round(e * METERS_TO_FEET) : null
+    // Unix seconds → epoch milliseconds. Not rebased: track.js reads position 2
+    // as an absolute instant, and treats 0 as "no timestamp" — so a rebased
+    // track would also silently lose its own first point.
+    tuple[TRACK_TIME] = t !== null && t > 0 ? Math.round(t * 1000) : null
+    // Metres, stored as given. Conversion to feet happens at display time so no
+    // rounding error accumulates in the stored data.
+    tuple[TRACK_ELEV] = num(p.e)
     // Zero is a dropped strap reading, not a heart rate.
     tuple[TRACK_HR] = bounded(num(p.h) === 0 ? null : p.h, 30, 240)
     return tuple
