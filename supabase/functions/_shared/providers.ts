@@ -1,5 +1,6 @@
 /**
- * Shared OAuth + provider logic for Strava, Fitbit, and Google Health.
+ * Shared OAuth + provider logic for Strava, Fitbit, Google Health, and Ride
+ * with GPS.
  *
  * Everything that touches a client secret or a stored token lives here, and
  * here only runs server-side. The browser never sees a token: the integrations
@@ -9,7 +10,7 @@
 
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 
-export type Provider = 'strava' | 'fitbit' | 'google_health'
+export type Provider = 'strava' | 'fitbit' | 'google_health' | 'ridewithgps'
 
 export interface TokenSet {
   access_token: string
@@ -92,6 +93,17 @@ export const CONFIG = {
     clientId: () => requiredEnv('GOOGLE_CLIENT_ID'),
     clientSecret: () => requiredEnv('GOOGLE_CLIENT_SECRET'),
   },
+  ridewithgps: {
+    authorizeUrl: 'https://ridewithgps.com/oauth/authorize',
+    tokenUrl: 'https://ridewithgps.com/oauth/token.json',
+    // Ride with GPS takes no scope parameter — authorization is client_id,
+    // redirect_uri and response_type only, and the token comes back with
+    // scope "user". authorizeUrl() below omits it for this provider rather
+    // than sending one the server does not read.
+    scope: '',
+    clientId: () => requiredEnv('RWGPS_CLIENT_ID'),
+    clientSecret: () => requiredEnv('RWGPS_CLIENT_SECRET'),
+  },
 } as const
 
 /** Provider consent URL for the start of the flow. */
@@ -102,8 +114,9 @@ export function authorizeUrl(provider: Provider, state: string): string {
     redirect_uri: callbackUrl(),
     response_type: 'code',
     state,
-    scope: cfg.scope,
   })
+  // Ride with GPS documents no scope parameter; the others require one.
+  if (cfg.scope) params.set('scope', cfg.scope)
   // Strava re-prompts on every connect unless told otherwise.
   if (provider === 'strava') params.set('approval_prompt', 'auto')
 
@@ -145,6 +158,22 @@ export async function exchangeCode(provider: Provider, code: string): Promise<To
         client_secret: cfg.clientSecret(),
         code,
         grant_type: 'authorization_code',
+      }),
+    })
+  } else if (provider === 'ridewithgps') {
+    // JSON body including redirect_uri, which must match the one used to start
+    // the flow. The response carries no expires_in and no refresh_token — the
+    // token is valid until revoked — so expiryToIso returns null below and
+    // validAccessToken's "no refresh token" branch hands it straight back.
+    response = await fetch(cfg.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        code,
+        client_id: cfg.clientId(),
+        client_secret: cfg.clientSecret(),
+        redirect_uri: callbackUrl(),
       }),
     })
   } else if (provider === 'google_health') {
@@ -194,6 +223,15 @@ export async function exchangeCode(provider: Provider, code: string): Promise<To
 export async function refreshTokens(provider: Provider, refreshToken: string): Promise<TokenSet> {
   const cfg = CONFIG[provider]
   let response: Response
+
+  if (provider === 'ridewithgps') {
+    // Ride with GPS issues no refresh tokens: an access token lives until the
+    // user or the app revokes it. Reaching here means a caller has a stored
+    // refresh token for a provider that does not mint them, so returning the
+    // value unchanged is the honest answer — there is nothing to exchange it
+    // for, and a POST to the token endpoint would only fail.
+    return { access_token: refreshToken, refresh_token: refreshToken, expires_at: null, scope: null }
+  }
 
   if (provider === 'strava') {
     response = await fetch(cfg.tokenUrl, {

@@ -23,7 +23,7 @@ import {
  * google_health was added, so the flow was rejected with a 400 before it began
  * while every other function already understood the provider.
  */
-const SUPPORTED: Provider[] = ['strava', 'fitbit', 'google_health']
+const SUPPORTED: Provider[] = ['strava', 'fitbit', 'google_health', 'ridewithgps']
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })

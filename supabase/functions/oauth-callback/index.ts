@@ -1,5 +1,5 @@
 /**
- * Handles the redirect back from Strava or Fitbit.
+ * Handles the redirect back from a provider's consent screen.
  *
  * The provider sends the browser here with ?code and ?state. The state is
  * looked up server-side to identify the user, consumed so it cannot be

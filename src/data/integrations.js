@@ -125,6 +125,7 @@ export function readConnectResult() {
 
 export const PROVIDER_LABELS = {
   strava: 'Strava',
+  ridewithgps: 'Ride with GPS',
   google_health: 'Google Health',
   fitbit: 'Fitbit',
 }
@@ -132,6 +133,8 @@ export const PROVIDER_LABELS = {
 export const PROVIDER_BLURBS = {
   strava:
     'Imports rides automatically: distance, moving time, elevation, heart rate, and the GPS route. Requires a paid Strava subscription since June 2026 — importing a .gpx file from the Rides screen does the same job for free.',
+  ridewithgps:
+    'Imports rides with heart rate recorded second by second — the one thing Strava’s API will not hand over. Strava returns a route outline and one average figure; this returns every beat along the way, which is what time in zones and the 80/20 audit are actually computed from. Cadence, power and calories come too, where the head unit recorded them.',
   google_health:
     'Imports resting heart rate, weight, body fat, and sleep from Fitbit, Pixel Watch, and anything feeding Google Health. Resting HR is the number that moves first when aerobic fitness improves.',
   fitbit:

@@ -14,17 +14,22 @@ import {
 import { formatShortDate, recordDate } from '../../data/dates.js'
 
 /**
- * Connect, sync, and disconnect Strava and Fitbit.
+ * Connect, sync, and disconnect the ride and health providers.
  *
  * Status is fetched from the server rather than cached locally, because a
  * connection can be revoked from the provider's own settings page and a stale
  * "connected" badge would be a lie.
  */
 
+// Ride with GPS leads because it is the only ride source here that returns
+// heart rate per track point. Strava's API gives a route outline and a single
+// average, so nothing needing a continuous trace — time in zones, the polarized
+// audit — can be computed from a Strava import.
+//
 // Fitbit is intentionally absent: its API is switched off at the end of
 // September 2026, so offering it would invite someone to set up an integration
 // with weeks to live. Rows already connected still appear, via `status`.
-const PROVIDERS = ['google_health', 'strava']
+const PROVIDERS = ['ridewithgps', 'google_health', 'strava']
 
 /** A copyable value for pasting into a provider's developer console. */
 function Field({ label, value }) {

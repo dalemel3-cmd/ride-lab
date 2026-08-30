@@ -19,6 +19,11 @@ import {
   CORS_HEADERS,
   type Provider,
 } from '../_shared/providers.ts'
+import {
+  tripToRide,
+  trackHasHeartRate,
+  type TrackPoint,
+} from '../_shared/ridewithgps.ts'
 
 const METERS_TO_MILES = 0.000621371
 const METERS_TO_FEET = 3.28084
@@ -91,6 +96,110 @@ async function syncStrava(admin: ReturnType<typeof adminClient>, userId: string,
     .eq('provider', 'strava')
 
   return { connected: true, imported: rides.length }
+}
+
+/**
+ * Import trips from Ride with GPS, with their per-point heart rate.
+ *
+ * Two requests per trip is unavoidable: the trips index deliberately omits
+ * track_points, so the detail endpoint has to be fetched per trip. The window
+ * is therefore bounded by MAX_TRIPS rather than by the size of the library.
+ *
+ * The trip → ride mapping lives in _shared/ridewithgps.ts, pure and tested
+ * against the payload the API documents.
+ */
+async function syncRideWithGps(
+  admin: ReturnType<typeof adminClient>,
+  userId: string,
+  sinceDays: number,
+) {
+  const token = await validAccessToken(admin, userId, 'ridewithgps')
+  if (!token) return { connected: false, imported: 0 }
+
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+
+  // The index is ordered by updated_at and cannot be filtered by date
+  // server-side, so the window is applied here.
+  const cutoffMs = Date.now() - sinceDays * 86400000
+  // A ceiling on detail fetches, so a long library cannot turn one sync into
+  // hundreds of requests against someone else's API.
+  const MAX_TRIPS = 50
+
+  const summaries: Array<Record<string, unknown>> = []
+  for (let page = 1; page <= 5 && summaries.length < MAX_TRIPS; page += 1) {
+    const listResponse = await fetch(
+      `https://ridewithgps.com/api/v1/trips.json?page=${page}&page_size=50`,
+      { headers },
+    )
+    if (!listResponse.ok) {
+      throw new Error(
+        `Ride with GPS trips failed (${listResponse.status}): ${await listResponse.text()}`,
+      )
+    }
+
+    const body = await listResponse.json()
+    const trips = Array.isArray(body?.trips) ? body.trips : []
+    if (trips.length === 0) break
+
+    let sawOlderThanWindow = false
+    for (const trip of trips) {
+      const departed = trip?.departed_at ? Date.parse(trip.departed_at) : NaN
+      if (Number.isFinite(departed) && departed < cutoffMs) {
+        sawOlderThanWindow = true
+        continue
+      }
+      summaries.push(trip)
+    }
+
+    // Ordered by updated_at rather than departed_at, so an old trip edited
+    // yesterday still appears near the top. Stop only once a page contained
+    // something outside the window and there is no next page.
+    if (sawOlderThanWindow || !body?.meta?.pagination?.next_page_url) break
+  }
+
+  const rides: Record<string, unknown>[] = []
+  let skipped = 0
+
+  for (const summary of summaries.slice(0, MAX_TRIPS)) {
+    if (summary?.id == null) continue
+
+    const detailResponse = await fetch(`https://ridewithgps.com/api/v1/trips/${summary.id}.json`, {
+      headers,
+    })
+    // One unreadable trip must not abort the sync: a trip can answer 403 when
+    // it belongs to a club ride the rider can no longer see.
+    if (!detailResponse.ok) {
+      skipped += 1
+      continue
+    }
+
+    const ride = tripToRide((await detailResponse.json())?.trip, userId)
+    if (ride) rides.push(ride)
+    else skipped += 1
+  }
+
+  if (rides.length === 0) return { connected: true, imported: 0, skipped }
+
+  // ignoreDuplicates so a later sync cannot wipe an RPE typed in by hand.
+  const { error } = await admin
+    .from('rides')
+    .upsert(rides, { onConflict: 'user_id,source,external_id', ignoreDuplicates: true })
+  if (error) throw error
+
+  await admin
+    .from('integrations')
+    .update({ last_synced_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('provider', 'ridewithgps')
+
+  // Reported because it is the reason this provider is here at all: a ride
+  // without a heart-rate trace contributes nothing to time in zones or the
+  // polarized audit, and the rider should be able to see that at a glance.
+  const withHeartRate = rides.filter((r) =>
+    trackHasHeartRate((r.track ?? []) as TrackPoint[]),
+  ).length
+
+  return { connected: true, imported: rides.length, withHeartRate, skipped }
 }
 
 async function syncFitbit(admin: ReturnType<typeof adminClient>, userId: string, sinceDays: number) {
@@ -840,6 +949,26 @@ async function discoverGoogleTypes(admin: ReturnType<typeof adminClient>, userId
   return { connected: true, valid, invalid, samples }
 }
 
+/**
+ * The providers that can be synced and disconnected, and what syncs each.
+ *
+ * One table rather than a chain of ternaries and a separate hand-written
+ * allowlist: those two drifted apart before — oauth-start knew about
+ * google_health while the disconnect branch still rejected it — and a provider
+ * added to this map is understood by every path at once.
+ */
+const SYNCS: Record<
+  Provider,
+  (admin: ReturnType<typeof adminClient>, userId: string, days: number) => Promise<unknown>
+> = {
+  strava: syncStrava,
+  fitbit: syncFitbit,
+  google_health: syncGoogleHealth,
+  ridewithgps: syncRideWithGps,
+}
+
+const SYNCABLE = Object.keys(SYNCS) as Provider[]
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
@@ -868,8 +997,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'disconnect') {
-      if (provider !== 'strava' && provider !== 'fitbit' && provider !== 'google_health') {
-        return json({ error: 'provider must be "strava", "fitbit", or "google_health".' }, 400)
+      if (!SYNCABLE.includes(provider as Provider)) {
+        return json({ error: `provider must be one of: ${SYNCABLE.join(', ')}.` }, 400)
       }
       await admin
         .from('integrations')
@@ -884,15 +1013,15 @@ Deno.serve(async (req) => {
       const results: Record<string, unknown> = {}
       const errors: Record<string, string> = {}
 
-      // One failing provider must not prevent the other from syncing.
-      for (const p of provider ? [provider] : ['strava', 'fitbit', 'google_health']) {
+      // One failing provider must not prevent the others from syncing.
+      for (const p of provider ? [provider] : SYNCABLE) {
         try {
-          results[p] =
-            p === 'strava'
-              ? await syncStrava(admin, userId, days)
-              : p === 'fitbit'
-                ? await syncFitbit(admin, userId, days)
-                : await syncGoogleHealth(admin, userId, days)
+          const sync = SYNCS[p as Provider]
+          if (!sync) {
+            errors[p] = `Unknown provider: ${p}`
+            continue
+          }
+          results[p] = await sync(admin, userId, days)
         } catch (error) {
           errors[p] = String((error as Error).message ?? error)
         }

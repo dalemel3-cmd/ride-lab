@@ -105,7 +105,43 @@ Easily confused, and they behave differently:
 
 - **Vercel** → Project Settings → Environment Variables: the two `VITE_SUPABASE_*` values. Baked
   into the bundle at build time, so changing one needs a redeploy to take effect.
-- **Supabase** → Edge Functions → Secrets: `APP_URL`, plus the four `STRAVA_*` / `FITBIT_*`
-  values. Read at invocation, so a change applies to the next call.
+- **Supabase** → Edge Functions → Secrets: `APP_URL`, plus the provider client id/secret pairs
+  (`STRAVA_*`, `FITBIT_*`, `GOOGLE_*`, `RWGPS_*`). Read at invocation, so a change applies to the
+  next call.
 
 `APP_URL` must match the deployed site, or connecting Strava will send you back to the wrong place.
+
+## Ride with GPS API client
+
+Created at <https://ridewithgps.com/settings/developers>. What the form wants:
+
+| Field | Value |
+| --- | --- |
+| Application name | Ride Lab |
+| Application category | Other |
+| Application URL | the deployed site (the same value as `APP_URL`) |
+| Sync routes | off — this study records rides, it does not plan routes |
+| Sync trips | on |
+| Webhook URL | leave blank; the app syncs on demand rather than listening |
+| Redirect URIs | `https://<project-ref>.supabase.co/functions/v1/oauth-callback` |
+
+The Redirect URI must match `callbackUrl()` in `_shared/providers.ts` exactly. Ride with GPS
+compares it both on the authorize call and again on the token exchange, and a trailing slash counts
+as a mismatch.
+
+The client's management page then shows an OAuth client id and secret. They go in as Supabase Edge
+Function secrets:
+
+```
+RWGPS_CLIENT_ID=<OAuth client id>
+RWGPS_CLIENT_SECRET=<OAuth client secret>
+```
+
+These are the **OAuth** credentials, which only appear once Redirect URIs are saved — not the
+`api_key` used for Basic authentication. Basic auth is the other scheme Ride with GPS supports and
+this app deliberately does not use it: it mints a token from the account email and password, and
+there is no reason for this app to handle a password when OAuth never exposes one.
+
+Ride with GPS issues no refresh token. An access token is valid until revoked, so unlike Google
+there is no expiry to design around — `refreshTokens()` returns the stored token unchanged for this
+provider.
