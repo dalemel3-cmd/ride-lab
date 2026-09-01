@@ -24,6 +24,7 @@ import {
   trackHasHeartRate,
   type TrackPoint,
 } from '../_shared/ridewithgps.ts'
+import { isPlausibleHrv, nightlyHrv } from '../_shared/health.ts'
 
 const METERS_TO_MILES = 0.000621371
 const METERS_TO_FEET = 3.28084
@@ -526,6 +527,16 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
   }
   const notes: string[] = []
 
+  // HRV is the one measure that arrives as many samples per night rather than
+  // one value per day. Health Connect writes an rMSSD reading every few minutes
+  // through sleep, so assigning each one to its date — as every other field
+  // here does — leaves whichever sample happened to come last, which is a
+  // snapshot of one moment and not the night. That is what put a 37 next to an
+  // 81 next to a 110 in a rider whose true nightly average barely moved.
+  // Collect them and take the mean, which is the statistic Fitbit and the
+  // Plews ln(rMSSD) literature both report.
+  const hrvSamples = new Map<string, number[]>()
+
   // Each type is fetched independently: one unsupported identifier should not
   // cost the others, and the note explains what was skipped.
   for (const [key, cfg] of Object.entries(GOOGLE_TYPES)) {
@@ -598,8 +609,10 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
           ])
           // A plausible physiological range, so a misread field is dropped
           // rather than charted. Adult resting rMSSD runs roughly 10–200 ms.
-          if (ms !== null && ms >= 5 && ms <= 400) row.hrv_ms = Math.round(ms)
-          else if (ms !== null) {
+          if (isPlausibleHrv(ms)) {
+            if (!hrvSamples.has(day)) hrvSamples.set(day, [])
+            hrvSamples.get(day)!.push(ms as number)
+          } else if (ms !== null) {
             notes.push(`hrv: ignored an out-of-range value (${ms}) — field mapping may be wrong`)
           }
         } else if (key === 'vo2Max') {
@@ -624,6 +637,11 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
     } catch (error) {
       notes.push(`${cfg.path}: ${String((error as Error).message ?? error).slice(0, 160)}`)
     }
+  }
+
+  for (const [day, samples] of hrvSamples) {
+    const mean = nightlyHrv(samples)
+    if (mean !== null) touch(day).hrv_ms = mean
   }
 
   const bodyRows = [...byDate.entries()]
