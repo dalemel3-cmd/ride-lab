@@ -59,11 +59,12 @@ HR, so it adds little here.
    against 786 beats/mile. Was waiting on a bike repair (left crank kept coming
    loose; rides on 27 and 29 August are flagged not-representative in their
    notes and should be excluded from any efficiency claim).
-4. **Write the benchmark protocol down.** The study turns on repeating the
-   16-mile ride from 2026-08-23. Only the route is pinned; it also needs a
-   target *average heart rate* (not a target speed, or the rider just rides
-   harder), time of day, fed state, and wind/temperature noted. Without that,
-   December's comparison is arguable rather than evidence.
+4. **Run the benchmark to protocol.** Written up in
+   `docs/BENCHMARK-PROTOCOL.md`: hold 128-142 bpm on the 16-mile Greenway
+   course, repeat every four weeks, record temperature and wind every time.
+   Note the seasonal confound documented there — an August-to-December
+   comparison in Arkansas is biased toward flattering the rider, and the
+   mid-study repeats are the cleaner evidence.
 5. **Same-route distance varies ~5%** — 8.79 mi vs 8.33 mi on identical ground.
    That difference alone moves a beats-per-mile comparison from "flat" to
    "-5.7%". Worth finding out whether one track is short.
@@ -158,4 +159,5 @@ src/data/store.js         offline-first queue
 supabase/functions/       Edge Functions, _shared/ is bundled into each
 db/                       migrations, applied in order
 docs/RPE-PLAN.md          session-RPE background
+docs/BENCHMARK-PROTOCOL.md the study's one controlled measurement
 ```
