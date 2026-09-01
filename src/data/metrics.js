@@ -7,7 +7,7 @@
  * the case study makes.
  */
 
-import { startOfWeek, toDateString, recordDate } from './dates.js'
+import { startOfWeek, toDateString, recordDate, daysBetween, studyWeek } from './dates.js'
 import { ACWR_THRESHOLDS, FOSTER_MONOTONY_THRESHOLDS } from '../settings.js'
 
 /**
@@ -399,6 +399,49 @@ export function efficiencyFactor(distanceMi, durationMin, avgHrValue) {
  */
 export function analysable(rides = []) {
   return rides.filter((r) => !r?.excluded)
+}
+
+/**
+ * The day the study actually began.
+ *
+ * A rider's own choice wins. Failing that this is derived from the data rather
+ * than from the day the app happened to be installed, which is what
+ * `caseStudyStartDate` used to default to — open the app four days before the
+ * first ride and every week number is inflated for sixteen weeks, with the
+ * study "starting" before a single measurement existed.
+ *
+ * The baseline measurement is the better anchor than the first ride, because
+ * every "vs baseline" figure in the study is already measured from it.
+ */
+export function resolveStudyStart(configured, { rides = [], bodyComp = [] } = {}) {
+  if (configured) return configured
+
+  const baseline = bodyComp.find((m) => m?.is_baseline)?.measured_at
+  if (baseline) return String(baseline).slice(0, 10)
+
+  const dates = analysable(rides)
+    .map((r) => recordDate(r))
+    .sort()
+  return dates[0] ?? toDateString()
+}
+
+/**
+ * Where the study stands: which day, which week, how far through.
+ *
+ * Day is 1-based. The first day of a sixteen-week study is day one, not day
+ * zero — the cockpit read "Day 0" for the whole of the opening day, which reads
+ * like the study had not started.
+ */
+export function studyProgress(startDate, totalWeeks = 16, today = toDateString()) {
+  const elapsed = Math.max(0, daysBetween(startDate, today))
+  const totalDays = totalWeeks * 7
+  return {
+    startDate,
+    day: elapsed + 1,
+    week: Math.min(studyWeek(startDate, today), totalWeeks),
+    totalWeeks,
+    percent: Math.min(100, Math.round((elapsed / totalDays) * 100)),
+  }
 }
 
 export function efficiencyBySurface(rides = []) {

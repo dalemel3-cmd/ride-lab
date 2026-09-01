@@ -20,11 +20,12 @@ import {
   polarizedAudit,
   timeInZones,
   combineZoneTimes,
+  resolveStudyStart,
+  studyProgress,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
   formatDuration,
-  studyWeek,
   toDateString,
   daysBetween,
   recordDate,
@@ -161,13 +162,18 @@ export default function DashboardScreen({
     [recentZones],
   )
 
-  // Study Progress
-  const studyStart = settings.caseStudyStartDate
-  const daysIn = Math.max(0, daysBetween(studyStart, toDateString()))
-  const currentWeekNumber = Math.min(
-    studyWeek(studyStart, toDateString()),
-    settings.caseStudyWeeks,
+  // Study Progress. The start date is the rider's if they set one, otherwise
+  // derived from the baseline measurement rather than from the install date.
+  const studyStart = useMemo(
+    () => resolveStudyStart(settings.caseStudyStartDate, { rides, bodyComp }),
+    [settings.caseStudyStartDate, rides, bodyComp],
   )
+  const progress = useMemo(
+    () => studyProgress(studyStart, settings.caseStudyWeeks),
+    [studyStart, settings.caseStudyWeeks],
+  )
+  const daysIn = progress.day
+  const currentWeekNumber = progress.week
 
   // Zone 2 Target Range. Derived from the rider's own max HR — no fallback
   // pair of numbers, which would be someone else's zone presented as theirs.

@@ -9,8 +9,6 @@
  * version appears automatically for someone with an older saved blob.
  */
 
-import { toDateString } from './data/dates.js'
-
 export const SETTINGS_STORAGE_KEY = 'ridelab_settings'
 
 export const DEFAULT_SETTINGS = {
@@ -29,8 +27,15 @@ export const DEFAULT_SETTINGS = {
   maxHr: 190,
   restingHrTarget: 55,
 
-  // The case study window. Defaults to 16 weeks from first launch.
-  caseStudyStartDate: toDateString(),
+  // The case study window.
+  //
+  // Null means "work it out from the data" — see resolveStudyStart in
+  // metrics.js, which anchors to the baseline measurement. This used to default
+  // to the day of first launch, which is not when any study starts: opening the
+  // app four days before the first ride inflated every week number for sixteen
+  // weeks and dated the study to before its first measurement. Setting a date
+  // here in Settings still overrides it.
+  caseStudyStartDate: null,
   caseStudyWeeks: 16,
 
   distanceUnit: 'mi',

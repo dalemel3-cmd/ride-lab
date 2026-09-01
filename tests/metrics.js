@@ -41,6 +41,8 @@ import {
   speedAtHeartRate,
   aerobicEfficiencyTrend,
   EFFICIENCY_BAND,
+  resolveStudyStart,
+  studyProgress,
 } from '../src/data/metrics.js'
 import {
   startOfWeek,
@@ -603,6 +605,58 @@ check('a ride with under five minutes in band is omitted', aerobicEfficiencyTren
 check('an excluded ride never reaches the trend', aerobicEfficiencyTrend([
   { ridden_at: '2026-08-01T14:00:00Z', track: paceTrack(11, 128), excluded: true },
 ]).points.length, 0)
+
+console.log('\nStudy start and progress')
+// A configured date always wins: whatever the rider typed in Settings is a
+// statement of fact about their study, not a hint.
+check('a configured start date is used verbatim', resolveStudyStart('2026-08-23', {
+  rides: [{ ridden_at: '2026-07-01T14:00:00Z' }],
+}), '2026-08-23')
+
+// Otherwise the baseline measurement is the anchor — that is the definition of
+// a study baseline, and it is what every trendDelta compares against.
+check('the baseline measurement anchors the study', resolveStudyStart(null, {
+  rides: [{ ridden_at: '2026-08-22T14:00:00Z' }],
+  bodyComp: [
+    { measured_at: '2026-08-30', is_baseline: false },
+    { measured_at: '2026-08-23', is_baseline: true },
+  ],
+}), '2026-08-23')
+
+// No baseline yet: fall back to the earliest ride, not to today. Defaulting to
+// today is what put the cockpit a week ahead of the real study.
+check('with no baseline the first ride anchors it', resolveStudyStart(null, {
+  rides: [
+    { ridden_at: '2026-08-28T14:00:00Z' },
+    { ridden_at: '2026-08-22T14:00:00Z' },
+  ],
+}), '2026-08-22')
+check('an excluded ride cannot anchor the study', resolveStudyStart(null, {
+  rides: [
+    { ridden_at: '2026-08-01T14:00:00Z', excluded: true },
+    { ridden_at: '2026-08-22T14:00:00Z' },
+  ],
+}), '2026-08-22')
+
+// Day and week are both 1-based: the first day of a study is day one, and the
+// cockpit used to read "Day 0" on the morning it started.
+const dayOne = studyProgress('2026-08-23', 16, '2026-08-23')
+check('the first day is day one', dayOne.day, 1)
+check('and week one', dayOne.week, 1)
+check('and zero percent elapsed', dayOne.percent, 0)
+
+// 2026-08-23 to 2026-09-01 is nine days elapsed, so day ten, week two.
+const today = studyProgress('2026-08-23', 16, '2026-09-01')
+check('nine days elapsed reads as day ten', today.day, 10)
+check('which is week two', today.week, 2)
+check('and 8% of sixteen weeks', today.percent, 8)
+check('the start date comes back with it', today.startDate, '2026-08-23')
+
+// Week seven begins on day 43 and the last day of week 16 is day 112.
+check('day 43 is week seven', studyProgress('2026-08-23', 16, '2026-10-04').week, 7)
+const past = studyProgress('2026-08-23', 16, '2027-08-23')
+check('the week never exceeds the study length', past.week, 16)
+check('and the bar never exceeds full', past.percent, 100)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

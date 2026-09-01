@@ -34,11 +34,12 @@ import {
   polarizedAudit,
   aerobicEfficiencyTrend,
   MIN_BAND_MINUTES,
+  resolveStudyStart,
+  studyProgress,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
   formatDuration,
-  studyWeek,
   toDateString,
   daysBetween,
   recordDate,
@@ -292,10 +293,10 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
     ? `Every mile now costs my heart ${Math.abs(efficiencyTrend.change)} fewer beats.`
     : `${totals.rides} ride${totals.rides === 1 ? '' : 's'}. ${totals.distanceMi} miles. Still finding out what this does to me.`
 
-  const studyStart = settings.caseStudyStartDate
-  const daysIn = Math.max(0, daysBetween(studyStart, toDateString()))
-  const currentWeek = Math.min(studyWeek(studyStart, toDateString()), settings.caseStudyWeeks)
-  const progressPct = Math.min(100, Math.round((daysIn / (settings.caseStudyWeeks * 7)) * 100))
+  const studyStart = resolveStudyStart(settings.caseStudyStartDate, { rides, bodyComp })
+  const progress = studyProgress(studyStart, settings.caseStudyWeeks)
+  const currentWeek = progress.week
+  const progressPct = progress.percent
 
   const zoneRanges = hrZoneRanges(settings.maxHr)
   const midpoint = Math.floor(rpeVsHr.length / 2)
