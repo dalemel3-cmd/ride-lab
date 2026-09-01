@@ -411,7 +411,9 @@ async function main() {
   // download is the path the rider actually takes. PNG dimensions live in the
   // IHDR chunk at bytes 16-23, so the file itself proves the size.
   const cardPromise = page.waitForEvent('download')
-  await page.locator('button', { hasText: 'Card' }).click()
+  // Exact: there are two card buttons now, and "Card" is a substring of
+  // "Data card".
+  await page.getByRole('button', { name: 'Card', exact: true }).click()
   const cardDownload = await cardPromise
   const png = readFileSync(await cardDownload.path())
 
@@ -456,6 +458,62 @@ async function main() {
   )
   check('nothing spills past the left frame', framing.left, 0)
   check('nothing spills past the right frame', framing.right, 0)
+
+  console.log('\nThe tall data card')
+  // Downloaded and decoded, not re-rendered from source: the built preview
+  // serves no /src, and this is the path the rider actually takes.
+  const tallPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Data card' }).click()
+  const tallDownload = await tallPromise
+  const tallPng = readFileSync(await tallDownload.path())
+
+  check('a PNG is produced', tallPng.subarray(1, 4).toString(), 'PNG')
+  check(
+    'at Instagram portrait size',
+    [tallPng.readUInt32BE(16), tallPng.readUInt32BE(20)],
+    [1080, 1350],
+  )
+  check('and something was drawn on it', tallPng.length > 8000, true)
+  check(
+    'named for the study week',
+    /ride-lab-study-week-\d+\.png/.test(tallDownload.suggestedFilename()),
+    true,
+  )
+
+  // The chart band has to carry marks. A card that renders its headings and
+  // silently drops the charts underneath them would still be a valid PNG of the
+  // right size, and would still be published.
+  const tallInk = await page.evaluate(
+    (dataUrl) =>
+      new Promise((resolve) => {
+        const img = new Image()
+        img.addEventListener('load', () => {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.width
+          canvas.height = img.height
+          canvas.getContext('2d').drawImage(img, 0, 0)
+          const ctx = canvas.getContext('2d')
+          const lit = (x, y, w, h, threshold) => {
+            const { data } = ctx.getImageData(x, y, w, h)
+            let n = 0
+            for (let i = 0; i < data.length; i += 4) {
+              if (data[i] + data[i + 1] + data[i + 2] > threshold) n += 1
+            }
+            return n
+          }
+          resolve({
+            band: lit(88, 560, 904, 620, 150),
+            leftGutter: lit(0, 0, 30, canvas.height, 260),
+            rightGutter: lit(canvas.width - 30, 0, 30, canvas.height, 260),
+          })
+        })
+        img.src = dataUrl
+      }),
+    `data:image/png;base64,${tallPng.toString('base64')}`,
+  )
+  check('the chart band is not blank', tallInk.band > 5000, true)
+  check('nothing spills past the left frame', tallInk.leftGutter, 0)
+  check('nor the right', tallInk.rightGutter, 0)
 
   console.log('\nRepeats')
   await page.locator('.nav-item', { hasText: 'Repeats' }).click()

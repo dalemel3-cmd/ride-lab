@@ -15,7 +15,7 @@ import {
   ReferenceArea,
   ReferenceLine,
 } from 'recharts'
-import { Download, FileText, Flame, Image as ImageIcon } from 'lucide-react'
+import { BarChart3, Download, FileText, Flame, Image as ImageIcon } from 'lucide-react'
 import {
   weeklyRollup,
   summarize,
@@ -49,7 +49,7 @@ import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 import StudyReadiness from '../../components/StudyReadiness.jsx'
 import StudyHeadline from '../../components/StudyHeadline.jsx'
 import StudyReport from './StudyReport.jsx'
-import { downloadShareCard } from '../../data/shareCard.js'
+import { downloadShareCard, downloadStudyCard } from '../../data/shareCard.js'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
 
@@ -273,6 +273,25 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
   // series that produced it.
   const trendPoints = primarySurface?.points?.length ?? 0
 
+  /**
+   * The one sentence both share cards lead with.
+   *
+   * Shared rather than duplicated so the square card and the tall one can never
+   * make different claims about the same week. A statement about adaptation
+   * only appears once enough rides stand behind a falling cardiac cost; before
+   * that it says what was done, which is true, rather than what it means, which
+   * is not known yet.
+   */
+  const adaptationClaimIsSupported = Boolean(
+    efficiencyTrend &&
+      efficiencyTrend.change < 0 &&
+      trendPoints >= MIN_RIDES_FOR_ADAPTATION_CLAIM,
+  )
+
+  const headlineSentence = adaptationClaimIsSupported
+    ? `Every mile now costs my heart ${Math.abs(efficiencyTrend.change)} fewer beats.`
+    : `${totals.rides} ride${totals.rides === 1 ? '' : 's'}. ${totals.distanceMi} miles. Still finding out what this does to me.`
+
   const studyStart = settings.caseStudyStartDate
   const daysIn = Math.max(0, daysBetween(studyStart, toDateString()))
   const currentWeek = Math.min(studyWeek(studyStart, toDateString()), settings.caseStudyWeeks)
@@ -460,14 +479,7 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
     // Gated on the rides behind the trend, not the ride count of the whole
     // study. This card goes out in public, so the sentence it prints has to be
     // backed by the series it is quoting.
-    const adaptationClaimIsSupported =
-      efficiencyTrend &&
-      efficiencyTrend.change < 0 &&
-      trendPoints >= MIN_RIDES_FOR_ADAPTATION_CLAIM
-
-    const headline = adaptationClaimIsSupported
-      ? `Every mile now costs my heart ${Math.abs(efficiencyTrend.change)} fewer beats.`
-      : `${totals.rides} ride${totals.rides === 1 ? '' : 's'}. ${totals.distanceMi} miles. Still finding out what this does to me.`
+    const headline = headlineSentence
 
     // Four things a non-cyclist reads without stopping. Calories land better
     // than climbing for a general feed, so they lead when available.
@@ -499,6 +511,59 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
     ).then((ok) => {
       if (!ok) showToast?.('Could not render the image', 'error')
       else showToast?.('Saved a 1080×1080 card to your downloads')
+    })
+  }
+
+  /**
+   * The tall card: the charts, not just the totals.
+   *
+   * Sections appear only when the data behind them exists. The intensity split
+   * needs a real amount of recorded heart rate before it describes training
+   * rather than one ride, and the weekly bars need more than a single week —
+   * otherwise this publishes a chart of one point, which is the whole thing the
+   * study is trying not to do.
+   */
+  function handleStudyCard() {
+    const tracedMinutes = polarizedStudyAudit
+      ? Math.round(polarizedStudyAudit.totalSeconds / 60)
+      : 0
+
+    const domains =
+      polarizedStudyAudit && tracedMinutes >= 30
+        ? {
+            easyPct: polarizedStudyAudit.lowPct,
+            modPct: polarizedStudyAudit.modPct,
+            hardPct: polarizedStudyAudit.highPct,
+            minutes: tracedMinutes,
+          }
+        : null
+
+    const weekly = weeks.map((w) => ({
+      label: formatShortDate(w.week),
+      value: Math.round(w.distanceMi),
+    }))
+
+    downloadStudyCard(
+      {
+        week: currentWeek,
+        weeks: settings.caseStudyWeeks,
+        stats: [
+          { value: String(totals.distanceMi), unit: 'mi', label: 'Miles ridden' },
+          { value: formatDuration(totals.durationMin), unit: '', label: 'On the bike' },
+          { value: String(totals.rides), unit: '', label: 'Rides' },
+        ],
+        domains,
+        weekly,
+        headline: headlineSentence,
+        footnote: domains
+          ? `Intensity measured from ${maturity.ridesWithContinuousHr} ride${maturity.ridesWithContinuousHr === 1 ? '' : 's'} with a heart-rate strap recording every second. Easy is below 70% of max heart rate, hard above 80%.`
+          : 'A 16-week experiment on one body: what riding actually changes, measured every week.',
+        bikeName: settings.bikeName,
+      },
+      `ride-lab-study-week-${currentWeek}.png`,
+    ).then((ok) => {
+      if (!ok) showToast?.('Could not render the image', 'error')
+      else showToast?.('Saved a 1080×1350 data card to your downloads')
     })
   }
 
@@ -631,6 +696,14 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
             title="Open the case study as a printable report, then save it as a PDF"
           >
             <FileText size={16} aria-hidden="true" /> Report
+          </button>
+          <button
+            className="btn"
+            onClick={handleStudyCard}
+            style={{ padding: '8px 14px' }}
+            title="Save a 1080×1350 graphic with the charts, for Instagram"
+          >
+            <BarChart3 size={16} aria-hidden="true" /> Data card
           </button>
           <button
             className="btn"
