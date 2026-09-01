@@ -59,10 +59,17 @@ HR, so it adds little here.
    against 786 beats/mile. Was waiting on a bike repair (left crank kept coming
    loose; rides on 27 and 29 August are flagged not-representative in their
    notes and should be excluded from any efficiency claim).
-4. **Zone distribution is inverted.** Both traced rides sit ~45% in Z3 and the
-   most recent was 83% in Z3+Z4, against a Seiler target of ~80% in Z1+Z2. This
-   is the most actionable finding in the study so far and nothing in the app
-   surfaces it as advice yet.
+4. **Write the benchmark protocol down.** The study turns on repeating the
+   16-mile ride from 2026-08-23. Only the route is pinned; it also needs a
+   target *average heart rate* (not a target speed, or the rider just rides
+   harder), time of day, fed state, and wind/temperature noted. Without that,
+   December's comparison is arguable rather than evidence.
+5. **Same-route distance varies ~5%** — 8.79 mi vs 8.33 mi on identical ground.
+   That difference alone moves a beats-per-mile comparison from "flat" to
+   "-5.7%". Worth finding out whether one track is short.
+6. **The readiness score steps rather than glides.** Its bands are hard
+   thresholds, so a TSB of -14.9 and -15.1 score ten points apart. Smooth
+   interpolation between band edges would make the number less twitchy.
 
 ## Gotchas that have already caused real bugs
 
@@ -87,6 +94,15 @@ These are not hypothetical — each one shipped and had to be found in the data.
 - **Sync must never write `is_baseline: false`.** An upsert writes only the
   columns supplied; sending `false` erased the rider's chosen baseline on every
   sync and took every "vs baseline" comparison with it.
+- **Beats-per-mile is confounded by intensity** and must not carry an adaptation
+  claim on its own — the same rider scores 661 on a tempo ride and 700 on an
+  easier one. `aerobicEfficiencyTrend` (speed at 120-135 bpm) is the controlled
+  version; prefer it. Terrain still confounds both, so same-route comparison
+  remains the strongest evidence available.
+- **`excluded` on a ride means "not evidence about fitness", not "deleted".** It
+  is filtered out of `efficiencyBySurface`, `routeProgress` and
+  `aerobicEfficiencyTrend` via `analysable()`, and deliberately still counts
+  toward volume and training load.
 - **Never put a service-role or `sb_secret_` key in a `VITE_` variable** — it
   ships to every visitor. `.env` is gitignored and stays that way.
 - `integrations` and `oauth_states` have RLS enabled with **no policies**. That

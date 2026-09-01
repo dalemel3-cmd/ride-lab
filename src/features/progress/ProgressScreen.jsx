@@ -32,6 +32,8 @@ import {
   acwr,
   weeklyMonotony,
   polarizedAudit,
+  aerobicEfficiencyTrend,
+  MIN_BAND_MINUTES,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
@@ -253,6 +255,13 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
 
   const efficiencyTrend = primarySurface?.trend ?? null
   const surfaceLabel = (primarySurface?.surface ?? '').replace('-', ' ')
+
+  // Speed at a fixed heart rate — the version of aerobic efficiency that is not
+  // confounded by how hard the ride was. Beats-per-mile scores an easy ride
+  // worse than a hard one at identical fitness, so its trend largely records
+  // which intensity was chosen that day. Holding heart rate constant and
+  // watching speed removes that.
+  const aerobic = useMemo(() => aerobicEfficiencyTrend(rides), [rides])
 
   // How many rides the efficiency trend is actually built from.
   //
@@ -970,6 +979,87 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
           </ScienceNote>
         </section>
       )}
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Speed at a fixed heart rate — the controlled efficiency metric    */}
+      {/* ---------------------------------------------------------------- */}
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div>
+          <h3 style={{ fontSize: 'var(--text-lg)' }}>Speed at a fixed heart rate</h3>
+          <span className="muted">
+            How fast you travel while your heart works at {aerobic.band.minHr}–{aerobic.band.maxHr} bpm
+          </span>
+        </div>
+
+        {aerobic.points.length > 1 ? (
+          <>
+            <StatGrid min={150}>
+              <StatTile label="First" value={aerobic.points[0].mph} unit="mph" />
+              <StatTile
+                label="Latest"
+                value={aerobic.points[aerobic.points.length - 1].mph}
+                unit="mph"
+                tone={aerobic.trend?.improved ? 'good' : 'neutral'}
+                hint={
+                  aerobic.trend
+                    ? `${aerobic.trend.change > 0 ? '+' : ''}${aerobic.trend.change} mph (${aerobic.trend.pctChange}%)`
+                    : null
+                }
+              />
+              <StatTile
+                label="Rides in band"
+                value={aerobic.points.length}
+                hint={`${Math.round(aerobic.points.reduce((s, p) => s + p.minutes, 0))} min total`}
+              />
+            </StatGrid>
+
+            <div className="card">
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart
+                  data={aerobic.points.map((p) => ({ ...p, label: formatShortDate(p.date) }))}
+                  margin={CHART_MARGIN}
+                >
+                  <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
+                  <XAxis dataKey="label" stroke="var(--color-text-muted)" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    stroke="var(--color-text-muted)"
+                    tick={{ fontSize: 11 }}
+                    domain={['dataMin - 1', 'dataMax + 1']}
+                  />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Line
+                    type="monotone"
+                    dataKey="mph"
+                    name="mph at zone 2"
+                    stroke="var(--status-success)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        ) : (
+          <EmptyState>
+            {aerobic.points.length === 1
+              ? `One ride so far with at least ${MIN_BAND_MINUTES} minutes between ${aerobic.band.minHr} and ${aerobic.band.maxHr} bpm, at ${aerobic.points[0].mph} mph. A second gives this a trend.`
+              : `Needs rides with a continuous heart-rate trace and at least ${MIN_BAND_MINUTES} minutes spent between ${aerobic.band.minHr} and ${aerobic.band.maxHr} bpm. Record with a strap paired to your head unit or phone.`}
+          </EmptyState>
+        )}
+
+        <ScienceNote title="Why this is the number to trust, not beats per mile">
+          Beats-per-mile is confounded by how hard you rode: the same rider scores{' '}
+          <strong>661 on a tempo ride and 700 on an easier one</strong> with no change in fitness at
+          all. A trend built from it mostly records which intensity you happened to choose.
+          <br />
+          <br />
+          This holds the physiological cost constant instead. Your heart is doing the same work at
+          125 bpm in December as it is today, so if you are covering more ground per hour at that
+          same cost, the difference is <strong>you</strong> — a bigger stroke volume, denser
+          capillary beds, more mitochondria. It is the cleanest evidence of aerobic adaptation
+          available without a laboratory.
+        </ScienceNote>
+      </section>
 
       {/* ---------------------------------------------------------------- */}
       {/* Headline: aerobic efficiency                                      */}

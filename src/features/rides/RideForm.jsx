@@ -24,6 +24,8 @@ export default function RideForm({ rides = [], settings, initial, onSave, onCanc
     rpe: initial?.rpe ?? null,
     surface: initial?.surface ?? settings.defaultSurface,
     notes: initial?.notes ?? '',
+    excluded: initial?.excluded ?? false,
+    excluded_reason: initial?.excluded_reason ?? '',
   }))
   const [busy, setBusy] = useState(false)
 
@@ -100,6 +102,8 @@ export default function RideForm({ rides = [], settings, initial, onSave, onCanc
         rpe: form.rpe ? Number(form.rpe) : null,
         surface: form.surface || null,
         notes: form.notes || null,
+        excluded: Boolean(form.excluded),
+        excluded_reason: form.excluded ? form.excluded_reason || null : null,
         ...(initial?.track ? { track: initial.track } : {}),
       })
     } finally {
@@ -222,6 +226,62 @@ export default function RideForm({ rides = [], settings, initial, onSave, onCanc
           value={form.notes}
           onChange={set('notes')}
         />
+      </div>
+
+      {/* Not a delete. A ride that went wrong still happened, and its time and
+          training load still count — what it should not do is anchor a claim
+          about fitness. Two rides in this study were ridden with a crank arm
+          coming loose, and one of them was the first point in the efficiency
+          trend, so every "since baseline" figure started from a breakdown. */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          padding: 12,
+          borderRadius: 'var(--radius-md)',
+          background: 'var(--color-surface-raised)',
+        }}
+      >
+        <label
+          htmlFor="excluded"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            margin: 0,
+            textTransform: 'none',
+            letterSpacing: 0,
+            fontSize: 'var(--text-sm)',
+            color: 'var(--color-text)',
+            cursor: 'pointer',
+            minHeight: 'var(--tap-target)',
+          }}
+        >
+          <input
+            id="excluded"
+            type="checkbox"
+            checked={Boolean(form.excluded)}
+            onChange={(e) => setForm((f) => ({ ...f, excluded: e.target.checked }))}
+            style={{ width: 20, height: 20, minHeight: 20, flexShrink: 0, margin: 0 }}
+          />
+          Leave out of fitness analysis
+        </label>
+
+        <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+          For a ride something went wrong on — a mechanical, illness, a wrong turn. It still counts
+          toward your miles, time and training load. It stops counting toward beats-per-mile, speed
+          at a fixed heart rate, and repeated-route comparison.
+        </span>
+
+        {form.excluded && (
+          <input
+            aria-label="Why this ride is excluded"
+            placeholder="What went wrong?"
+            value={form.excluded_reason}
+            onChange={set('excluded_reason')}
+          />
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>

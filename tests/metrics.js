@@ -37,6 +37,10 @@ import {
   fosterMonotonyAndStrain,
   weeklyMonotony,
   polarizedAudit,
+  analysable,
+  speedAtHeartRate,
+  aerobicEfficiencyTrend,
+  EFFICIENCY_BAND,
 } from '../src/data/metrics.js'
 import {
   startOfWeek,
@@ -503,6 +507,102 @@ check('triggers warn tone on Grey Zone', threshResult.tone, 'warn')
 check('less than 60 seconds of HR is null', polarizedAudit([{ zone: 1, seconds: 30 }]), null)
 check('empty zone array is null', polarizedAudit([]), null)
 check('null input is null', polarizedAudit(null), null)
+
+
+console.log('\nHolding a ride out of adaptation analysis')
+// A ride can be real — its time and load count — while being useless as
+// evidence about fitness. Two rides in this study were ridden with a crank arm
+// coming loose, and one of them was the first point in the efficiency trend.
+const withBroken = [
+  { ridden_at: '2026-08-22T14:00:00Z', avg_hr: 115, duration_min: 50, distance_mi: 6, surface: 'road' },
+  { ridden_at: '2026-08-27T14:00:00Z', avg_hr: 127, duration_min: 46, distance_mi: 8.79, surface: 'road', excluded: true },
+  { ridden_at: '2026-08-30T14:00:00Z', avg_hr: 145, duration_min: 38, distance_mi: 8.33, surface: 'road' },
+]
+check('analysable drops excluded rides', analysable(withBroken).length, 2)
+check('and keeps the rest untouched', analysable(withBroken)[1].distance_mi, 8.33)
+check('an absent flag means included', analysable([{ ridden_at: 'x' }]).length, 1)
+const effExcl = efficiencyBySurface(withBroken)
+check('the efficiency series skips it too', effExcl[0].points.length, 2)
+check(
+  'so the trend is measured between the two sound rides',
+  effExcl[0].points.map((p) => p.date),
+  ['2026-08-22', '2026-08-30'],
+)
+// Volume is a different question: the ride happened and the body paid for it.
+check('but total distance still counts every ride', summarize(withBroken).rides, 3)
+check('including the excluded one', summarize(withBroken).distanceMi, 23.1)
+
+console.log('\nSpeed at a fixed heart rate')
+// Two points 0.1 mi apart, 30 s and 60 s in. Both in band -> one 30 s leg.
+const legTrack = [
+  [36.0, -94.0, 1_000_000_000_000, 300, 125],
+  [36.001447, -94.0, 1_000_000_030_000, 300, 128],
+]
+const leg = speedAtHeartRate(legTrack, { minHr: 120, maxHr: 135 })
+// 0.001447 deg latitude = 0.09993 mi; over 30 s that is ~11.99 mph.
+check('computes mph from the trace', Math.abs(leg.mph - 12) < 0.15, true)
+check('and reports how much of the ride backed it', leg.minutes, 0.5)
+
+// A leg is only counted when BOTH ends are in the band, so time merely passing
+// through the band on the way to a sprint is not counted as time at that effort.
+const throughBand = [
+  [36.0, -94.0, 1_000_000_000_000, 300, 125],
+  [36.001447, -94.0, 1_000_000_030_000, 300, 160],
+]
+check('a leg leaving the band is not counted', speedAtHeartRate(throughBand), null)
+
+const belowBand = [
+  [36.0, -94.0, 1_000_000_000_000, 300, 100],
+  [36.001447, -94.0, 1_000_000_030_000, 300, 105],
+]
+check('nor is a leg below it', speedAtHeartRate(belowBand), null)
+
+// A pause is not time spent at the last-known heart rate.
+const withPause = [
+  [36.0, -94.0, 1_000_000_000_000, 300, 125],
+  [36.001447, -94.0, 1_000_000_600_000, 300, 126],
+]
+check('a ten-minute gap is a stop, not a slow mile', speedAtHeartRate(withPause), null)
+
+// A GPS jump would otherwise report a bicycle at motorway speed.
+const jump = [
+  [36.0, -94.0, 1_000_000_000_000, 300, 125],
+  [37.0, -94.0, 1_000_000_010_000, 300, 126],
+]
+check('a GPS jump is discarded', speedAtHeartRate(jump), null)
+
+check('no track is null, not zero', speedAtHeartRate(null), null)
+check('a track without heart rate is null', speedAtHeartRate([[36, -94, 1, 300], [36.001, -94, 2, 300]]), null)
+check('the default band is zone 2', [EFFICIENCY_BAND.minHr, EFFICIENCY_BAND.maxHr], [120, 135])
+
+console.log('\nAerobic efficiency trend')
+// Same heart rate, more speed, three weeks apart: that is adaptation.
+const paceTrack = (mph, hr) => {
+  const pts = []
+  // 20 minutes of 30-second legs.
+  for (let i = 0; i <= 40; i += 1) {
+    pts.push([36 + (i * mph * 30 / 3600) / 69.055, -94, 1_000_000_000_000 + i * 30_000, 300, hr])
+  }
+  return pts
+}
+const trendRides = [
+  { ridden_at: '2026-08-01T14:00:00Z', route_name: 'Loop', track: paceTrack(11, 128) },
+  { ridden_at: '2026-08-20T14:00:00Z', route_name: 'Loop', track: paceTrack(13, 128) },
+]
+const aero = aerobicEfficiencyTrend(trendRides)
+check('one point per qualifying ride', aero.points.length, 2)
+check('the first is about 11 mph', Math.abs(aero.points[0].mph - 11) < 0.2, true)
+check('the second about 13', Math.abs(aero.points[1].mph - 13) < 0.2, true)
+check('faster at the same heart rate reads as improvement', aero.trend.improved, true)
+check('and the band is reported with the series', aero.band, { minHr: 120, maxHr: 135 })
+
+// A ride with only a moment in the band says nothing and is left out entirely,
+// rather than plotted at whatever its partial sample happened to be.
+const brief = [{ ridden_at: '2026-08-05T14:00:00Z', track: paceTrack(11, 128).slice(0, 3) }]
+check('a ride with under five minutes in band is omitted', aerobicEfficiencyTrend(brief).points.length, 0)
+check('an excluded ride never reaches the trend', aerobicEfficiencyTrend([
+  { ridden_at: '2026-08-01T14:00:00Z', track: paceTrack(11, 128), excluded: true },
+]).points.length, 0)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

@@ -388,10 +388,23 @@ export function efficiencyFactor(distanceMi, durationMin, avgHrValue) {
  * ride measures the trail, not the rider, so the series is split by surface
  * and only ever compared within a group.
  */
+/**
+ * Rides that may be used to make a claim about fitness.
+ *
+ * An excluded ride is still a ride — it counts toward volume, duration and
+ * training load, because the body did that work. What it must not do is anchor
+ * an adaptation trend. Two rides in this study were ridden with a crank arm
+ * working loose, and one of them was the first point in the efficiency series,
+ * so every "since baseline" figure was measured from a mechanical failure.
+ */
+export function analysable(rides = []) {
+  return rides.filter((r) => !r?.excluded)
+}
+
 export function efficiencyBySurface(rides = []) {
   const groups = new Map()
 
-  for (const ride of [...rides].sort((a, b) => String(a.ridden_at).localeCompare(String(b.ridden_at)))) {
+  for (const ride of analysable(rides).sort((a, b) => String(a.ridden_at).localeCompare(String(b.ridden_at)))) {
     const bpm = beatsPerMile(ride.avg_hr, ride.duration_min, ride.distance_mi)
     if (bpm === null) continue
     const surface = ride.surface || 'unspecified'
@@ -417,6 +430,112 @@ export function efficiencyBySurface(rides = []) {
 }
 
 /**
+ * The heart-rate window the aerobic-efficiency trend is measured in.
+ *
+ * Zone 2 for a 190 max, and deliberately narrow. The point is to hold
+ * physiological cost constant so that any change in speed is a change in the
+ * rider, so a wide band would defeat the exercise.
+ */
+export const EFFICIENCY_BAND = { minHr: 120, maxHr: 135 }
+
+/** Below this there is not enough of a ride in the band to mean anything. */
+export const MIN_BAND_MINUTES = 5
+
+/**
+ * Average speed while heart rate sat inside a band, from a continuous trace.
+ *
+ * This is the metric beats-per-mile wanted to be. Beats-per-mile is confounded
+ * by intensity — the same rider scores 661 on a tempo ride and 700 on an easier
+ * one — so a trend built from it mostly records which intensity was chosen that
+ * day. Holding heart rate fixed and watching speed removes that: the same
+ * cardiac cost, over months, should buy more miles per hour.
+ *
+ * Only legs where *both* endpoints sit in the band are counted, so the sample
+ * is time genuinely spent at that effort rather than time passing through it.
+ * Long gaps are dropped for the same reason timeInZones drops them — a pause is
+ * not time spent at the last-known heart rate.
+ *
+ * Returns null when the ride has no usable trace, which is the honest answer
+ * for a manually entered ride with no per-point data.
+ */
+export function speedAtHeartRate(track, { minHr, maxHr } = EFFICIENCY_BAND) {
+  if (!Array.isArray(track) || track.length < 2) return null
+
+  // Matches timeInZones: beyond a minute, the rider stopped.
+  const MAX_GAP_SEC = 60
+  // A leg faster than this is a GPS jump, not a bicycle.
+  const MAX_LEG_MPH = 60
+
+  let miles = 0
+  let seconds = 0
+
+  for (let i = 1; i < track.length; i += 1) {
+    const from = track[i - 1]
+    const to = track[i]
+
+    const hrFrom = toNumber(from?.[TRACK_HR])
+    const hrTo = toNumber(to?.[TRACK_HR])
+    if (hrFrom === null || hrTo === null) continue
+    if (hrFrom < minHr || hrFrom > maxHr || hrTo < minHr || hrTo > maxHr) continue
+
+    const t1 = toNumber(from?.[TRACK_TIME])
+    const t2 = toNumber(to?.[TRACK_TIME])
+    if (t1 === null || t2 === null || t1 <= 0 || t2 <= 0) continue
+
+    const gap = (t2 - t1) / 1000
+    if (!(gap > 0) || gap > MAX_GAP_SEC) continue
+
+    const legMiles = haversineMiles(from, to)
+    if (!(legMiles >= 0)) continue
+    if (legMiles / (gap / 3600) > MAX_LEG_MPH) continue
+
+    miles += legMiles
+    seconds += gap
+  }
+
+  if (seconds <= 0 || miles <= 0) return null
+
+  return {
+    mph: Math.round((miles / (seconds / 3600)) * 100) / 100,
+    minutes: Math.round((seconds / 60) * 10) / 10,
+    miles: Math.round(miles * 100) / 100,
+  }
+}
+
+/**
+ * The aerobic-efficiency series: speed at a fixed heart rate, over time.
+ *
+ * Rides without enough time in the band are left out rather than plotted at
+ * whatever their partial sample happened to say — the whole value of this
+ * metric is that every point describes the same physiological cost.
+ */
+export function aerobicEfficiencyTrend(rides = [], options = {}) {
+  const { minHr, maxHr } = { ...EFFICIENCY_BAND, ...options }
+  const minMinutes = options.minMinutes ?? MIN_BAND_MINUTES
+
+  const points = []
+  for (const ride of analysable(rides).sort((a, b) =>
+    String(a.ridden_at).localeCompare(String(b.ridden_at)),
+  )) {
+    const result = speedAtHeartRate(ride.track, { minHr, maxHr })
+    if (!result || result.minutes < minMinutes) continue
+    points.push({
+      date: recordDate(ride),
+      route: ride.route_name || 'Ride',
+      mph: result.mph,
+      minutes: result.minutes,
+    })
+  }
+
+  return {
+    band: { minHr, maxHr },
+    points,
+    // Faster at the same heart rate is the improvement, so higher is better.
+    trend: trendDelta(points.map((p) => p.mph)),
+  }
+}
+
+/**
  * First vs. most recent ride on each repeated route.
  *
  * The cleanest progress signal available without a lab. Same trail, same
@@ -426,7 +545,7 @@ export function efficiencyBySurface(rides = []) {
 export function routeProgress(rides = []) {
   const byRoute = new Map()
 
-  for (const ride of rides) {
+  for (const ride of analysable(rides)) {
     if (!ride.route_name) continue
     const key = ride.route_name.toLowerCase()
     if (!byRoute.has(key)) byRoute.set(key, [])
