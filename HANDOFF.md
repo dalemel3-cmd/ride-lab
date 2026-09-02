@@ -37,7 +37,6 @@ GPS. 53 `body_comp` rows syncing from Google Health. Baseline marked 2026-08-23.
 | `oauth-start` | |
 | `oauth-callback` | **must stay `verify_jwt: false`** — providers redirect a bare browser here |
 | `integrations-config` | reports which provider secrets exist, booleans only |
-| `authcheck` | retired, safe to delete |
 
 **Connected providers:** Google Health (resting HR, HRV, weight, body fat,
 sleep), Ride with GPS (rides with per-point heart rate). Strava is configured in
@@ -46,26 +45,20 @@ HR, so it adds little here.
 
 ## Immediate open items
 
-1. **Redeploy `integrations`.** Two fixes are on `main` but may not be live:
-   the duplicate guard (`5bb5484`) and the track-format fix (`eed41cb`).
-   ```
-   npx supabase functions deploy integrations --project-ref egyxalxfvsxucwtyzvat
-   ```
-   The upload list must include `_shared/ridewithgps.ts`.
-2. **Rotate `RWGPS_CLIENT_SECRET`.** The current value was pasted into a chat
+1. **Rotate `RWGPS_CLIENT_SECRET`.** The current value was pasted into a chat
    transcript. Regenerate on Ride with GPS, update the Supabase secret. No code
    change.
-3. **Benchmark ride** — repeat the 16-mile course from 2026-08-23 and compare
+2. **Benchmark ride** — repeat the 16-mile course from 2026-08-23 and compare
    against 786 beats/mile. Was waiting on a bike repair (left crank kept coming
    loose; rides on 27 and 29 August are flagged not-representative in their
    notes and should be excluded from any efficiency claim).
-4. **Run the benchmark to protocol.** Written up in
+3. **Run the benchmark to protocol.** Written up in
    `docs/BENCHMARK-PROTOCOL.md`: hold 128-142 bpm on the 16-mile Greenway
    course, repeat every four weeks, record temperature and wind every time.
    Note the seasonal confound documented there — an August-to-December
    comparison in Arkansas is biased toward flattering the rider, and the
    mid-study repeats are the cleaner evidence.
-5. **Same-route distance varies ~5%** — 8.79 mi vs 8.33 mi on identical ground.
+4. **Same-route distance varies ~5%** — 8.79 mi vs 8.33 mi on identical ground.
    That difference alone moves a beats-per-mile comparison from "flat" to
    "-5.7%". Worth finding out whether one track is short.
 6. **The readiness score steps rather than glides.** Its bands are hard
@@ -84,6 +77,20 @@ These are not hypothetical — each one shipped and had to be found in the data.
 - **Dates are America/Chicago, via `src/data/dates.js`.** Never
   `toISOString().slice(0,10)` — that reads the UTC date. Foster monotony did
   this and gave different answers morning vs evening on the same day.
+- **HRV is many samples a night, not one value a day.** Health Connect writes an
+  rMSSD reading every few minutes through sleep. The Google sync originally
+  assigned each sample to its date the way it does weight and resting HR — last
+  write wins — which stored one arbitrary moment as the night. The series read
+  37, 81, 110, 56, 116 on consecutive nights; the rider's own Fitbit app showed
+  98 for the night this recorded as 116. `_shared/health.ts` now takes the mean.
+  Anything sampled continuously needs the same treatment.
+- **HRV must not be compared against the `is_baseline` row.** That row is right
+  for weight and waist, which one ride does not move. rMSSD drops sharply the
+  night after a hard effort, and this study's baseline day *was* the 16-mile
+  RPE-7 benchmark: 63 ms against 87 and 93 the two nights before, resting HR up
+  three beats. Measured against it the case study claimed a 63% HRV gain; the
+  honest figure against the pre-training nights is ~15%, and the real finding is
+  a flat mean with day-to-day variability halving. Use `preTrainingHrv`.
 - **The store returns rides newest-first.** `slice(-10)` gets the *oldest* ten.
 - **ACWR compares 7 days against 28**, never against the 42-day CTL. Pass
   `acwrChronic`, not `ctl`. Getting this wrong reported an ACWR of 5.15 in
