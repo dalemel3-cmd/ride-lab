@@ -1010,6 +1010,22 @@ export function hrvAutonomicBands(bodyComp = []) {
  *
  * Integrates HRV autonomic status, resting heart rate deviation, and recent fatigue.
  */
+/** Piecewise linear interpolation between ordered [x, y] anchor points. */
+function interpolate(x, points) {
+  if (x <= points[0][0]) return points[0][1]
+  if (x >= points[points.length - 1][0]) return points[points.length - 1][1]
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const [x0, y0] = points[i]
+    const [x1, y1] = points[i + 1]
+    if (x >= x0 && x <= x1) {
+      if (x1 === x0) return y0
+      const t = (x - x0) / (x1 - x0)
+      return y0 + t * (y1 - y0)
+    }
+  }
+  return points[points.length - 1][1]
+}
+
 export function dailyReadiness({
   hrv,
   hrvBaseline,
@@ -1028,10 +1044,13 @@ export function dailyReadiness({
   const hrvBase = toNumber(hrvBaseline)
   if (hrvNow !== null && hrvBase !== null && hrvBase > 0) {
     const hrvRatio = hrvNow / hrvBase
-    if (hrvRatio >= 1.05) score += 12
-    else if (hrvRatio >= 0.95) score += 5
-    else if (hrvRatio >= 0.85) score -= 10
-    else score -= 25
+    score += interpolate(hrvRatio, [
+      [0.7, -25],
+      [0.85, -10],
+      [0.95, 2],
+      [1.0, 5],
+      [1.05, 12],
+    ])
     inputs += 1
   }
 
@@ -1039,21 +1058,29 @@ export function dailyReadiness({
   const rhrBase = toNumber(restingHrBaseline)
   if (rhrNow !== null && rhrBase !== null && rhrBase > 0) {
     const rhrDiff = rhrNow - rhrBase
-    if (rhrDiff <= -2) score += 10
-    else if (rhrDiff <= 1) score += 4
-    else if (rhrDiff <= 4) score -= 8
-    else score -= 20
+    score += interpolate(rhrDiff, [
+      [-2, 10],
+      [0, 4],
+      [1, 2],
+      [4, -8],
+      [8, -20],
+    ])
     inputs += 1
   }
 
   // TSB is only meaningful once rides exist to compute it from; callers pass
   // null rather than 0 when the performance chart is empty.
+  // Smoothly interpolated across band edges so TSB -14.9 and -15.1 do not jump 10 points.
   const tsb = toNumber(recentTsb)
   if (tsb !== null) {
-    if (tsb > 5) score += 8
-    else if (tsb >= -15) score += 2
-    else if (tsb >= -30) score -= 8
-    else score -= 18
+    score += interpolate(tsb, [
+      [-45, -18],
+      [-30, -8],
+      [-15, -2],
+      [0, 2],
+      [5, 6],
+      [10, 8],
+    ])
     inputs += 1
   }
 

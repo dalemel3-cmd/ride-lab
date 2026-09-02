@@ -354,6 +354,11 @@ async function main() {
     /\d+ of 42 days/.test(progressText),
     true,
   )
+  const provisionalBadges = await page.locator('.confidence-badge[data-level="provisional"]').count()
+  check('provisional confidence badges are rendered on immature metrics', provisionalBadges > 0, true)
+  const measuredBadges = await page.locator('.confidence-badge[data-level="measured"]').count()
+  check('measured metrics render no confidence badge', measuredBadges, 0)
+
   check('heart rate zones are explained', progressText.includes('Endurance'), true)
   check('total distance is summarised', progressText.includes('20.4'), true)
   const charts = await page.locator('.recharts-wrapper').count()

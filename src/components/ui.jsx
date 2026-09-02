@@ -26,8 +26,52 @@ export function toneColor(tone, fallback = 'var(--color-text)') {
   }
 }
 
+/**
+ * Qualifier for claim strength.
+ *
+ * Three levels only:
+ * - 'measured': stands on its own (renders null — absence of qualifier is the signal).
+ * - 'provisional': real arithmetic, window still filling (renders muted grey chip).
+ * - 'inconclusive': inside measurement noise floor (renders cautionary amber chip).
+ */
+export function Confidence({ level, children }) {
+  if (level === 'measured' || !level || !children) return null
+
+  const isInconclusive = level === 'inconclusive'
+  const color = isInconclusive ? 'var(--status-warn)' : 'var(--color-text-muted)'
+  const border = isInconclusive
+    ? '1px solid color-mix(in srgb, var(--status-warn) 30%, transparent)'
+    : '1px solid var(--color-border)'
+  const bg = isInconclusive
+    ? 'color-mix(in srgb, var(--status-warn) 10%, transparent)'
+    : 'var(--color-surface-raised)'
+
+  return (
+    <span
+      className="confidence-badge"
+      data-level={level}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'baseline',
+        gap: 4,
+        padding: '2px 7px',
+        borderRadius: 999,
+        background: bg,
+        border,
+        color,
+        fontSize: 'var(--text-xs)',
+        lineHeight: 1.3,
+        maxWidth: '100%',
+        wordBreak: 'break-word',
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
 /** A labelled number, the basic unit of every summary row. */
-export function StatTile({ label, value, unit, tone, hint }) {
+export function StatTile({ label, value, unit, tone, hint, confidence }) {
   const color = toneColor(tone)
 
   return (
@@ -62,6 +106,7 @@ export function StatTile({ label, value, unit, tone, hint }) {
           </span>
         )}
       </span>
+      {confidence}
       {hint && (
         <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>{hint}</span>
       )}

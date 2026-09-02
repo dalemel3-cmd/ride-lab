@@ -4,7 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { trendDelta, estimateVo2Max, preTrainingHrv } from '../../data/metrics.js'
 import { toDateString, formatShortDate } from '../../data/dates.js'
-import { StatGrid, StatTile, EmptyState, ScienceNote } from '../../components/ui.jsx'
+import { StatGrid, StatTile, EmptyState, ScienceNote, Confidence } from '../../components/ui.jsx'
 import PhotoLog from './PhotoLog.jsx'
 
 /**
@@ -228,6 +228,13 @@ export default function BodyCompScreen({ bodyComp, rides = [], settings, refresh
                   value={to}
                   unit={metric.unit}
                   tone={delta.improved ? 'good' : 'bad'}
+                  confidence={
+                    usePreTraining && !hrvReference.established ? (
+                      <Confidence level="provisional">
+                        {hrvReference.nights} of 3 pre-training nights
+                      </Confidence>
+                    ) : null
+                  }
                   hint={
                     usePreTraining
                       ? `${delta.change > 0 ? '+' : ''}${delta.change} from ${from} (${hrvReference.nights}-night pre-training mean)`
@@ -257,8 +264,13 @@ export default function BodyCompScreen({ bodyComp, rides = [], settings, refresh
               effort, so if the baseline day involved a real ride, that reading records the ride
               rather than the resting state — and every later night then gets measured against an
               artificially low number.
-              {!hrvReference.established &&
-                ' Only one night sits before the first ride, so treat this reference as provisional.'}
+              {!hrvReference.established && (
+                <div style={{ marginTop: 6 }}>
+                  <Confidence level="provisional">
+                    {hrvReference.nights} of 3 pre-training nights — establishing baseline
+                  </Confidence>
+                </div>
+              )}
             </ScienceNote>
           )}
 

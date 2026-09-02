@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Repeat, TrendingDown, TrendingUp } from 'lucide-react'
 import { routeProgress, beatsPerMile, avgSpeed } from '../../data/metrics.js'
 import { formatShortDate, recordDate } from '../../data/dates.js'
-import { EmptyState, ScienceNote } from '../../components/ui.jsx'
+import { EmptyState, ScienceNote, Confidence } from '../../components/ui.jsx'
 import SegmentsCard from './SegmentsCard.jsx'
 
 /**
@@ -23,7 +23,7 @@ import SegmentsCard from './SegmentsCard.jsx'
  */
 
 /** A first-versus-latest row, coloured by whether the change is an improvement. */
-function Delta({ label, first, latest, unit, lowerIsBetter }) {
+function Delta({ label, first, latest, unit, lowerIsBetter, conclusive }) {
   if (first == null || latest == null) {
     return (
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 'var(--text-sm)' }}>
@@ -36,30 +36,50 @@ function Delta({ label, first, latest, unit, lowerIsBetter }) {
   const change = Math.round((latest - first) * 10) / 10
   const improved = lowerIsBetter ? change < 0 : change > 0
   const flat = change === 0
-  const color = flat ? 'var(--color-text-muted)' : improved ? 'var(--status-success)' : 'var(--status-warn)'
+  const color = flat
+    ? 'var(--color-text-muted)'
+    : conclusive === false
+      ? 'var(--color-text-muted)'
+      : improved
+        ? 'var(--status-success)'
+        : 'var(--status-warn)'
   const Icon = change < 0 ? TrendingDown : TrendingUp
 
   return (
     <div
       style={{
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'baseline',
-        gap: 8,
-        fontSize: 'var(--text-sm)',
-        flexWrap: 'wrap',
+        flexDirection: 'column',
+        gap: 3,
+        padding: '2px 0',
       }}
     >
-      <span className="muted">{label}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap' }}>
-        <span className="muted">
-          {first} → {latest} {unit}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: 8,
+          fontSize: 'var(--text-sm)',
+          flexWrap: 'wrap',
+        }}
+      >
+        <span className="muted">{label}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap' }}>
+          <span className="muted">
+            {first} → {latest} {unit}
+          </span>
+          <span style={{ color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            {!flat && <Icon size={13} aria-hidden="true" />}
+            {flat ? 'no change' : `${change > 0 ? '+' : ''}${change}`}
+          </span>
         </span>
-        <span style={{ color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-          {!flat && <Icon size={13} aria-hidden="true" />}
-          {flat ? 'no change' : `${change > 0 ? '+' : ''}${change}`}
-        </span>
-      </span>
+      </div>
+      {conclusive === false && (
+        <Confidence level="inconclusive">
+          Within device noise (±4.3%) — different recorders
+        </Confidence>
+      )}
     </div>
   )
 }
@@ -134,18 +154,26 @@ export default function RepeatsScreen({ rides, settings }) {
               </span>
             </div>
 
+            {route.mixedSources && (
+              <Confidence level="inconclusive">
+                Recorded by different devices — distance on identical ground differs by ~{route.noiseFloorPct}%, so changes smaller than that are measurement noise.
+              </Confidence>
+            )}
+
             <Delta
               label="Cardiac cost"
               first={route.beatsPerMile?.first}
               latest={route.beatsPerMile?.latest}
               unit="beats/mi"
               lowerIsBetter
+              conclusive={route.beatsPerMile?.conclusive}
             />
             <Delta
               label="Average speed"
               first={route.speed?.first}
               latest={route.speed?.latest}
               unit="mph"
+              conclusive={route.speed?.conclusive}
             />
 
             {/* Speed rising while cardiac cost falls is the unambiguous result:

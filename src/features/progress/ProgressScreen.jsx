@@ -46,12 +46,13 @@ import {
   daysBetween,
   recordDate,
 } from '../../data/dates.js'
-import { StatGrid, StatTile, ScienceNote, EmptyState, ReadinessDial, FormStatusBadge } from '../../components/ui.jsx'
+import { StatGrid, StatTile, ScienceNote, EmptyState, ReadinessDial, FormStatusBadge, Confidence } from '../../components/ui.jsx'
 import ZoneBar from '../../components/ZoneBar.jsx'
 import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 import StudyReadiness from '../../components/StudyReadiness.jsx'
 import StudyHeadline from '../../components/StudyHeadline.jsx'
 import StudyReport from './StudyReport.jsx'
+import { buildStudyReport } from './buildStudyReport.js'
 import { downloadShareCard, downloadStudyCard } from '../../data/shareCard.js'
 
 const CHART_MARGIN = { top: 4, right: 8, left: -20, bottom: 0 }
@@ -577,107 +578,25 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
   }
 
   function handleExportCaseStudy() {
-    const provisional = (ready, needDays) =>
-      ready ? '' : ` *(provisional — ${maturity.days}d of ${needDays}d history)*`
+    const markdown = buildStudyReport({
+      currentWeek,
+      settings,
+      maturity,
+      totals,
+      substrateTotals,
+      polarizedStudyAudit,
+      efficiencyTrend,
+      surfaceLabel,
+      latestPmc,
+      latestAcwr,
+      monotonyStats,
+      latestBody,
+      hrvReference,
+      latestHrvBand,
+      routeGains,
+    })
 
-    const pmcBlock = latestPmc
-      ? [
-          `- **Fitness (CTL - 42d):** ${latestPmc.ctl}${provisional(maturity.ctlReady, 42)}`,
-          `- **Fatigue (ATL - 7d):** ${latestPmc.atl}`,
-          // TSB is CTL minus ATL, so its label is only meaningful once CTL is
-          // real. Early on the status just restates "you rode recently".
-          `- **Form (TSB):** ${latestPmc.tsb}${
-            maturity.ctlReady ? ` (${latestPmc.status})` : provisional(false, 42)
-          }`,
-          // Printed without its verdict until the chronic window exists. Two
-          // adjacent lines contradicting each other — "Danger Zone" beside
-          // "Optimal Progressive Overload" — is what made this read as noise.
-          `- **ACWR (Gabbett Ratio):** ${latestAcwr?.ratio ?? '—'}${
-            maturity.acwrReady
-              ? ` (${latestAcwr?.label ?? 'Awaiting data'})`
-              : ` *(not yet interpretable — needs 28d of history, has ${maturity.days}d)*`
-          }`,
-          `- **Foster Monotony (7d):** ${monotonyStats?.monotony ?? '—'} (Strain: ${
-            monotonyStats?.strain ?? '—'
-          })${provisional(maturity.monotonyReady, 7)}`,
-        ].join('\n')
-      : `- No load history available.`
-
-    const autonomicLine = latestHrvBand
-      ? latestHrvBand.baselineEstablished
-        ? latestHrvBand.autonomicState
-        : `Establishing baseline (${latestHrvBand.samples} of ${MIN_HRV_BASELINE_SAMPLES} readings)`
-      : 'Not measured'
-
-    const lines = [
-      `# 16-Week Cycling Physiological Case Study Report`,
-      `**Generated:** ${new Date().toISOString().slice(0, 10)} | **Study Week:** ${currentWeek} of ${settings.caseStudyWeeks}`,
-      ``,
-      // Stated once, at the top, so no reader has to infer it from a number
-      // that looks alarming.
-      maturity.days < 42
-        ? `> **Data maturity:** ${maturity.days} day${maturity.days === 1 ? '' : 's'} of ride history across ${totals.rides} ride${totals.rides === 1 ? '' : 's'}. Load models below marked *provisional* are still filling their windows and should not be read as findings yet.\n`
-        : ``,
-      `## 1. Executive Summary & Telemetry`,
-      `- **Total Rides:** ${totals.rides}`,
-      `- **Total Distance:** ${totals.distanceMi} miles`,
-      `- **Total Saddle Time:** ${formatDuration(totals.durationMin)}`,
-      `- **Total Elevation Climbed:** ${totals.elevationFt.toLocaleString()} ft`,
-      `- **Estimated Energy Burned:** ${substrateTotals.totalKcal.toLocaleString()} kcal (${substrateTotals.fatGrams}g Fat [~${substrateTotals.fatPounds} lbs] / ${substrateTotals.carbGrams}g Carbs)`,
-      ``,
-      `## 2. Training Intensity Distribution (Seiler 3-Domain Model)`,
-      polarizedStudyAudit
-        ? [
-            `- **Distribution:** ${polarizedStudyAudit.lowPct}% Low (Z1+Z2) / ${polarizedStudyAudit.modPct}% Mod (Z3) / ${polarizedStudyAudit.highPct}% High (Z4+Z5)`,
-            // A distribution over one ride is that ride, not a training
-            // pattern, and naming an archetype off it overstates the evidence.
-            `- **Basis:** ${maturity.ridesWithContinuousHr} of ${totals.rides} ride${totals.rides === 1 ? '' : 's'} carry continuous heart rate`,
-            `- **Archetype:** ${polarizedStudyAudit.label} (${polarizedStudyAudit.archetype})${
-              maturity.ridesWithContinuousHr < 3
-                ? ` *(provisional — describes ${maturity.ridesWithContinuousHr === 1 ? 'a single ride' : 'a handful of rides'}, not a training pattern)*`
-                : ''
-            }`,
-            `- **Guidance:** ${polarizedStudyAudit.description}`,
-          ].join('\n')
-        : `- No continuous HR track distribution available.`,
-      ``,
-      `## 3. Aerobic Decoupling & Efficiency (${surfaceLabel || 'Primary Surface'})`,
-      efficiencyTrend
-        ? `- **Initial Efficiency:** ${efficiencyTrend.first} beats/mile\n- **Current Efficiency:** ${efficiencyTrend.last} beats/mile\n- **Net Adaptation:** ${efficiencyTrend.change} beats/mile (${efficiencyTrend.pctChange}% change)`
-        : `- Insufficient single-surface rides recorded yet.`,
-      ``,
-      `## 4. Banister Performance Management & Workload Safety`,
-      pmcBlock,
-      latestBody
-        ? // Units only where there is a value to carry them: "— ms" reads like a
-          // failed measurement rather than an absent one.
-          `- **Current Resting HR:** ${latestBody.resting_hr != null ? `${latestBody.resting_hr} bpm` : '—'}\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'}${
-            hrvReference
-              ? `\n- **Pre-training HRV reference:** ${hrvReference.ms} ms (mean of ${hrvReference.nights} night${hrvReference.nights === 1 ? '' : 's'} before the first ride, ${hrvReference.from}${hrvReference.from !== hrvReference.to ? ` – ${hrvReference.to}` : ''}). Used instead of the baseline measurement because rMSSD recorded the night after a hard effort reflects that effort, not the resting state.`
-              : ''
-          }\n- **Autonomic Status:** ${autonomicLine}`
-        : ``,
-      ``,
-      `## 5. Repeated Route Progress (Identical Course Control)`,
-      // Every other section states what it cannot measure yet. This one used to
-      // spread an empty list under its heading, so the whole export ended on a
-      // bare title and read as a truncated file.
-      routeGains.length > 0
-        ? routeGains
-            .map(
-              (r) =>
-                `### ${r.route} (${r.rides}x)\n- Dates: ${r.firstDate} → ${r.latestDate}\n- Speed: ${r.speed?.first ?? '—'} → ${r.speed?.latest ?? '—'} mph${r.speed?.conclusive === false ? ' *(within device noise — not conclusive)*' : ''}\n- Cardiac Cost: ${r.beatsPerMile?.first ?? '—'} → ${r.beatsPerMile?.latest ?? '—'} beats/mi${r.beatsPerMile?.conclusive === false ? ' *(within device noise — not conclusive)*' : ''}${
-                  r.mixedSources
-                    ? `\n- **Recording caveat:** these rides were logged by different devices (${r.sources.join(', ')}). On identical ground the two measured distances differing by ~${r.noiseFloorPct}%, and both figures above are distance-sensitive, so changes smaller than that are measurement rather than adaptation.`
-                    : ''
-                }`,
-            )
-            .join('\n\n')
-        : `- No route ridden twice yet. Repeating one course is the cleanest control the study has: same distance, same climbing, same surface, so a change in speed or beats-per-mile is adaptation rather than a different day out.`,
-      ``,
-    ]
-
-    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
+    const blob = new Blob([markdown], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -875,6 +794,13 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                 label="Fitness (CTL)"
                 value={latestPmc.ctl}
                 unit="42d"
+                confidence={
+                  !maturity.ctlReady ? (
+                    <Confidence level="provisional">
+                      Needs 42 days, has {maturity.days}d
+                    </Confidence>
+                  ) : null
+                }
                 hint={maturity.ctlReady ? null : `${maturity.days} of 42 days of history`}
               />
               <StatTile label="Fatigue (ATL)" value={latestPmc.atl} unit="7d" />
@@ -882,7 +808,14 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                 label="Form (TSB)"
                 value={latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb}
                 tone={maturity.ctlReady ? latestPmc.tone : 'neutral'}
-                hint={maturity.ctlReady ? latestPmc.status : 'Not yet interpretable'}
+                confidence={
+                  !maturity.ctlReady ? (
+                    <Confidence level="provisional">
+                      Not yet interpretable
+                    </Confidence>
+                  ) : null
+                }
+                hint={maturity.ctlReady ? latestPmc.status : 'Awaiting 42-day CTL window'}
               />
             </StatGrid>
           )}
@@ -935,6 +868,13 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                 value={latestAcwr.ratio}
                 unit="7d/28d"
                 tone={maturity.acwrReady ? latestAcwr.tone : 'neutral'}
+                confidence={
+                  !maturity.acwrReady ? (
+                    <Confidence level="provisional">
+                      Needs 28 days, has {maturity.days}d
+                    </Confidence>
+                  ) : null
+                }
                 hint={
                   maturity.acwrReady
                     ? latestAcwr.label
@@ -945,6 +885,13 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                 label="7-Day Monotony"
                 value={monotonyStats ? monotonyStats.monotony : '—'}
                 tone={monotonyStats && maturity.monotonyReady ? monotonyStats.tone : 'neutral'}
+                confidence={
+                  !maturity.monotonyReady ? (
+                    <Confidence level="provisional">
+                      Needs 7 days, has {maturity.days}d
+                    </Confidence>
+                  ) : null
+                }
                 hint={
                   !monotonyStats
                     ? 'Daily load variance'
@@ -1169,6 +1116,13 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                 value={efficiencyTrend.last}
                 unit="beats/mi"
                 tone={efficiencyTrend.improved ? 'good' : 'bad'}
+                confidence={
+                  trendPoints < MIN_RIDES_FOR_ADAPTATION_CLAIM ? (
+                    <Confidence level="provisional">
+                      Needs 4 rides on {surfaceLabel}, has {trendPoints}
+                    </Confidence>
+                  ) : null
+                }
                 hint={`${efficiencyTrend.change > 0 ? '+' : ''}${efficiencyTrend.change} (${efficiencyTrend.pctChange}%)`}
               />
             </StatGrid>
@@ -1226,18 +1180,14 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                 {formatShortDate(r.firstDate)} → {formatShortDate(r.latestDate)}
               </span>
               {r.mixedSources && (
-                <span
-                  className="muted"
-                  style={{ fontSize: 'var(--text-xs)', color: 'var(--status-warn)' }}
-                >
-                  Recorded by different devices — distance on identical ground differs by about{' '}
-                  {r.noiseFloorPct}%, so a smaller change than that is measurement, not fitness.
-                </span>
+                <Confidence level="inconclusive">
+                  Recorded by different devices — distance on identical ground differs by ~{r.noiseFloorPct}%, so changes smaller than that are measurement noise.
+                </Confidence>
               )}
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginTop: 4 }}>
                 {r.speed && (
-                  <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
                       Average speed
                     </div>
@@ -1255,17 +1205,16 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                       >
                         {r.speed.latest} mph
                       </strong>
-                      {r.speed.conclusive === false && (
-                        <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-                          {' '}
-                          — within device noise
-                        </span>
-                      )}
                     </div>
+                    {r.speed.conclusive === false && (
+                      <Confidence level="inconclusive">
+                        Within device noise (±4.3%)
+                      </Confidence>
+                    )}
                   </div>
                 )}
                 {r.beatsPerMile && (
-                  <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div className="muted" style={{ fontSize: 'var(--text-xs)' }}>
                       Beats per mile
                     </div>
@@ -1283,13 +1232,12 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                       >
                         {r.beatsPerMile.latest}
                       </strong>
-                      {r.beatsPerMile.conclusive === false && (
-                        <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-                          {' '}
-                          — within device noise
-                        </span>
-                      )}
                     </div>
+                    {r.beatsPerMile.conclusive === false && (
+                      <Confidence level="inconclusive">
+                        Within device noise (±4.3%)
+                      </Confidence>
+                    )}
                   </div>
                 )}
               </div>

@@ -13,6 +13,8 @@
  * how a week-one ACWR of 5.15 ends up reading as "Danger Zone").
  */
 
+import { Confidence } from './ui.jsx'
+
 const TONE_COLOR = {
   good: 'var(--status-success)',
   bad: 'var(--status-error)',
@@ -80,20 +82,7 @@ function Row({ item }) {
       {/* Stated on the row itself, not in a footnote: whoever reads the number
           is the person who needs to know it is not final. */}
       {item.pending && (
-        <span
-          style={{
-            alignSelf: 'flex-start',
-            marginTop: 2,
-            padding: '2px 7px',
-            borderRadius: 999,
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-surface-raised)',
-            color: 'var(--color-text-muted)',
-            fontSize: 'var(--text-xs)',
-          }}
-        >
-          {item.pending}
-        </span>
+        <Confidence level="provisional">{item.pending}</Confidence>
       )}
     </div>
   )

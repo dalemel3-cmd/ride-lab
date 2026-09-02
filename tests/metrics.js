@@ -47,6 +47,7 @@ import {
   recordingSource,
   CROSS_SOURCE_DISTANCE_BIAS_PCT,
 } from '../src/data/metrics.js'
+import { buildStudyReport } from '../src/features/progress/buildStudyReport.js'
 import {
   startOfWeek,
   daysBetween,
@@ -351,6 +352,11 @@ check(
 const partial = dailyReadiness({ restingHr: 50, restingHrBaseline: 52 })
 check('a single real signal still scores', partial.score, 85)
 check('and reports how thin the basis is', partial.inputs, 1)
+
+// Readiness interpolation smoothing
+const tsb149 = dailyReadiness({ hrv: 80, hrvBaseline: 80, recentTsb: -14.9 })
+const tsb151 = dailyReadiness({ hrv: 80, hrvBaseline: 80, recentTsb: -15.1 })
+check('TSB -14.9 and -15.1 do not step-jump by 10 points', Math.abs(tsb149.score - tsb151.score) <= 1, true)
 
 console.log('\nMetabolic Substrate Utilization (FatMax)')
 const subZone2 = substrateOxidation(125, 60, 190) // ~65% max HR (Zone 2)
@@ -750,6 +756,24 @@ const clean = routeProgress(sameDevice)[0]
 check('one device means no mixed-source flag', clean.mixedSources, false)
 check('and no noise floor', clean.noiseFloorPct, null)
 check('so even a small change is reported as real', clean.beatsPerMile.conclusive, true)
+
+console.log('\nCase study report export generator')
+const sampleReport = buildStudyReport({
+  currentWeek: 2,
+  settings: { caseStudyWeeks: 16 },
+  maturity: { days: 12, ctlReady: false, acwrReady: false, monotonyReady: true, ridesWithContinuousHr: 2 },
+  totals: { rides: 6, distanceMi: 54.35, durationMin: 230, elevationFt: 2400 },
+  substrateTotals: { totalKcal: 2500, fatGrams: 80, fatPounds: '0.18', carbGrams: 300 },
+  latestPmc: { ctl: 24, atl: 30, tsb: -6, status: 'Neutral', tone: 'neutral' },
+  latestAcwr: { ratio: 1.15, label: 'Optimal', tone: 'good' },
+  monotonyStats: { monotony: 1.4, strain: 420 },
+  routeGains: [crossDevice],
+})
+check('report includes title', sampleReport.includes('# 16-Week Cycling Physiological Case Study Report'), true)
+check('report flags provisional data maturity at top', sampleReport.includes('12 days of ride history'), true)
+check('report marks CTL as provisional with days remaining', sampleReport.includes('**Fitness (CTL - 42d):** 24 *(provisional — 12d of 42d history)*'), true)
+check('report marks ACWR as not yet interpretable', sampleReport.includes('*(not yet interpretable — needs 28d of history, has 12d)*'), true)
+check('report flags inconclusive cross-device delta', sampleReport.includes('*(within device noise — not conclusive)*'), true)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

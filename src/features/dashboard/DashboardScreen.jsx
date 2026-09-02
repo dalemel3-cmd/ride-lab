@@ -31,7 +31,7 @@ import {
   daysBetween,
   recordDate,
 } from '../../data/dates.js'
-import { FormStatusBadge, toneColor } from '../../components/ui.jsx'
+import { FormStatusBadge, Confidence, toneColor } from '../../components/ui.jsx'
 import PolarizedGauge from '../../components/PolarizedGauge.jsx'
 
 export default function DashboardScreen({
@@ -397,6 +397,11 @@ export default function DashboardScreen({
               {latestPmc ? (latestPmc.tsb > 0 ? `+${latestPmc.tsb}` : latestPmc.tsb) : '—'}
             </span>
           </div>
+          {latestPmc && !maturity.ctlReady && (
+            <Confidence level="provisional">
+              Needs 42 days of history, has {maturity.days}d
+            </Confidence>
+          )}
           <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
             {latestPmc
               ? `Fitness ${latestPmc.ctl} · Fatigue ${latestPmc.atl}`
@@ -438,6 +443,11 @@ export default function DashboardScreen({
               bpm
             </span>
           </div>
+          {latestHrvBand && !latestHrvBand.baselineEstablished && (
+            <Confidence level="provisional">
+              {latestHrvBand.samples} of 7 nightly readings
+            </Confidence>
+          )}
           <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
             HRV: {latestBody?.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'} (
             {latestHrvBand?.autonomicState ?? 'Normal State'})
@@ -490,6 +500,11 @@ export default function DashboardScreen({
               beats/mi
             </span>
           </div>
+          {efficiencyTrend && trendPoints < 3 && (
+            <Confidence level="provisional">
+              Early read ({trendPoints} of 3 rides on {surfaceLabel})
+            </Confidence>
+          )}
           <span
             style={{
               fontSize: 'var(--text-xs)',
@@ -601,6 +616,11 @@ export default function DashboardScreen({
               7d / 28d
             </span>
           </div>
+          {currentAcwr && !maturity.acwrReady && (
+            <Confidence level="provisional">
+              Needs 28 days of history, has {maturity.days}d
+            </Confidence>
+          )}
           <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
             {!currentAcwr
               ? 'Awaiting load history'
@@ -662,6 +682,11 @@ export default function DashboardScreen({
               {currentMonotony ? `Strain ${currentMonotony.strain}` : ''}
             </span>
           </div>
+          {currentMonotony && !maturity.monotonyReady && (
+            <Confidence level="provisional">
+              Needs 7 days of history, has {maturity.days}d
+            </Confidence>
+          )}
           <span className="muted" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
             {!currentMonotony
               ? '7-day load variance index'
