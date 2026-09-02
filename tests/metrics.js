@@ -43,6 +43,7 @@ import {
   EFFICIENCY_BAND,
   resolveStudyStart,
   studyProgress,
+  preTrainingHrv,
 } from '../src/data/metrics.js'
 import {
   startOfWeek,
@@ -657,6 +658,66 @@ check('day 43 is week seven', studyProgress('2026-08-23', 16, '2026-10-04').week
 const past = studyProgress('2026-08-23', 16, '2027-08-23')
 check('the week never exceeds the study length', past.week, 16)
 check('and the bar never exceeds full', past.percent, 100)
+
+console.log('\nPre-training HRV reference')
+// The real series that exposed this. The 8/23 benchmark (16 mi, RPE 7) sits on
+// the study's baseline row, and that night's rMSSD is a post-effort suppression
+// of 63 against 87 and 93 the two nights before. Comparing later nights against
+// 63 reported a 63% gain; against the pre-training mean it is 15%.
+const hrvNights = [
+  ['2026-08-21', 87], ['2026-08-22', 93], ['2026-08-23', 63],
+  ['2026-08-24', 53], ['2026-09-01', 103],
+].map(([measured_at, hrv_ms]) => ({ measured_at, hrv_ms }))
+const hrvRides = [
+  { ridden_at: '2026-08-22T14:01:00Z' },
+  { ridden_at: '2026-08-23T14:22:00Z' },
+]
+const ref = preTrainingHrv(hrvNights, hrvRides)
+// Log mean of 87 and 93, not the arithmetic 90.0 — rMSSD is log-normal.
+check('the reference is the log mean of the pre-training nights', ref.ms, 89.9)
+check('which is below the arithmetic mean', ref.ms < 90, true)
+check('both nights are counted', ref.nights, 2)
+check('the window is reported', [ref.from, ref.to], ['2026-08-21', '2026-08-22'])
+check('two nights is enough to stand as a reference', ref.established, true)
+// The night of the first ride counts: its sleep ended that morning, before the
+// ride, and the day before it had no ride to carry over.
+check('the first ride day is included, not excluded', ref.to, '2026-08-22')
+// The whole point — the suppressed baseline night never reaches the reference.
+check('the benchmark night is excluded', ref.ms > 63, true)
+
+// A study that only started measuring on ride day has no pre-training window,
+// and saying so beats inventing one out of a post-ride night.
+check('no nights before the first ride is null', preTrainingHrv(
+  [{ measured_at: '2026-08-23', hrv_ms: 63 }],
+  [{ ridden_at: '2026-08-22T14:01:00Z' }],
+), null)
+check('no rides at all is null', preTrainingHrv(hrvNights, []), null)
+check('no measurements is null', preTrainingHrv([], hrvRides), null)
+
+// One night is usable but flagged, so the UI can qualify the claim.
+const thin = preTrainingHrv(
+  [{ measured_at: '2026-08-22', hrv_ms: 93 }],
+  [{ ridden_at: '2026-08-22T14:01:00Z' }],
+)
+check('a single night still gives a reference', thin.ms, 93)
+check('but is marked unestablished', thin.established, false)
+
+// An excluded ride must not define where training started — the aborted
+// mechanical would otherwise pull the window shut a day early.
+check('an excluded ride does not open the training window', preTrainingHrv(
+  hrvNights,
+  [{ ridden_at: '2026-08-21T14:00:00Z', excluded: true }, { ridden_at: '2026-08-22T14:01:00Z' }],
+).nights, 2)
+
+// Nulls and zeroes are absent readings, not low ones.
+check('missing readings are skipped', preTrainingHrv(
+  [
+    { measured_at: '2026-08-20', hrv_ms: null },
+    { measured_at: '2026-08-21', hrv_ms: 0 },
+    { measured_at: '2026-08-22', hrv_ms: 93 },
+  ],
+  hrvRides,
+).nights, 1)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

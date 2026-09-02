@@ -22,6 +22,7 @@ import {
   combineZoneTimes,
   resolveStudyStart,
   studyProgress,
+  preTrainingHrv,
 } from '../../data/metrics.js'
 import {
   formatShortDate,
@@ -58,6 +59,9 @@ export default function DashboardScreen({
     () => sortedBody.find((m) => m.is_baseline) ?? sortedBody[0] ?? null,
     [sortedBody],
   )
+  // HRV needs a resting reference, which the baseline row is not guaranteed to
+  // be — see preTrainingHrv.
+  const hrvReference = useMemo(() => preTrainingHrv(sortedBody, rides), [sortedBody, rides])
 
   // The rider's own resting heart rate, for TRIMP's heart-rate reserve. Falls
   // back to 60 only when nothing has been measured.
@@ -86,8 +90,12 @@ export default function DashboardScreen({
     () =>
       dailyReadiness({
         hrv: latestBody?.hrv_ms != null ? Number(latestBody.hrv_ms) : null,
+        // The rolling 7-day mean first, then the pre-training nights, and the
+        // baseline row only as a last resort — that row's HRV can be a hard
+        // ride's aftermath rather than a resting value.
         hrvBaseline:
           latestHrvBand?.baselineHrv ??
+          hrvReference?.ms ??
           (baselineBody?.hrv_ms != null ? Number(baselineBody.hrv_ms) : null),
         restingHr:
           latestBody?.resting_hr != null ? Number(latestBody.resting_hr) : null,
@@ -99,7 +107,7 @@ export default function DashboardScreen({
         // and a zero here would manufacture a score out of nothing.
         recentTsb: latestPmc?.tsb ?? null,
       }),
-    [latestBody, baselineBody, latestHrvBand, latestPmc],
+    [latestBody, baselineBody, latestHrvBand, hrvReference, latestPmc],
   )
 
   // 4. Headline Aerobic Efficiency (Beats per Mile)

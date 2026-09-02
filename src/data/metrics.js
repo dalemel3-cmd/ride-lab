@@ -811,6 +811,68 @@ export function performanceManagementChart(
 export const MIN_HRV_BASELINE_SAMPLES = 7
 
 /**
+ * Fewest pre-training nights that can stand as an HRV reference.
+ *
+ * Two is not many, and the return value says so through `nights` so a caller
+ * can qualify the claim. It is still a far better reference than one night that
+ * happens to carry the baseline flag.
+ */
+export const MIN_PRETRAINING_NIGHTS = 2
+
+/**
+ * Resting HRV from before training started.
+ *
+ * The study's `is_baseline` row is the right anchor for weight and waist, which
+ * a single ride does not move. It is the wrong anchor for HRV, and this study
+ * shows why: the baseline day was a 16-mile benchmark at RPE 7, roughly triple
+ * any other session, and that night's rMSSD came in at 63 ms against 87 and 93
+ * on the two nights before it. Resting heart rate rose three beats the same
+ * night. The reading is real — it is a textbook acute suppression — but it
+ * describes the ride, not the rider, and comparing later nights against it
+ * reported a 63% HRV gain that no reviewer would let stand.
+ *
+ * So the reference is the mean of every night strictly before the first ride,
+ * taken in log space because rMSSD is log-normal and an arithmetic mean of raw
+ * milliseconds is biased upward by exactly the high outliers this is trying not
+ * to be fooled by.
+ *
+ * Returns null when there are no such nights — a study that started logging on
+ * ride day has no pre-training window, and inventing one would be worse than
+ * saying so.
+ */
+export function preTrainingHrv(bodyComp = [], rides = []) {
+  const rideDates = analysable(rides)
+    .map((r) => recordDate(r))
+    .filter(Boolean)
+    .sort()
+  const firstRide = rideDates[0]
+  if (!firstRide) return null
+
+  const nights = bodyComp
+    .filter((m) => m?.measured_at && m?.hrv_ms != null && Number(m.hrv_ms) > 0)
+    .map((m) => ({ date: String(m.measured_at).slice(0, 10), hrv: Number(m.hrv_ms) }))
+    // The first ride's own date counts. A night's rMSSD is measured during the
+    // sleep that ends on that morning, so it precedes anything ridden that day,
+    // and the day before it — by definition of "first ride" — had no ride to
+    // carry over. Excluding it throws away half a two-night window for nothing.
+    .filter((n) => n.date <= firstRide)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  if (nights.length === 0) return null
+
+  const lnMean = nights.reduce((sum, n) => sum + Math.log(n.hrv), 0) / nights.length
+  return {
+    ms: Math.round(Math.exp(lnMean) * 10) / 10,
+    lnMean,
+    nights: nights.length,
+    from: nights[0].date,
+    to: nights[nights.length - 1].date,
+    // Two nights is a reference, not a baseline. The UI says which it has.
+    established: nights.length >= MIN_PRETRAINING_NIGHTS,
+  }
+}
+
+/**
  * HRV 7-Day Rolling Baseline & Smallest Worthwhile Change (SWC) Bands.
  *
  * Implements Plews et al. (2013) sports science protocol:

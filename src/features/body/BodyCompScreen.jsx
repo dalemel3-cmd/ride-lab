@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, Flag } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
-import { trendDelta, estimateVo2Max } from '../../data/metrics.js'
+import { trendDelta, estimateVo2Max, preTrainingHrv } from '../../data/metrics.js'
 import { toDateString, formatShortDate } from '../../data/dates.js'
 import { StatGrid, StatTile, EmptyState, ScienceNote } from '../../components/ui.jsx'
 import PhotoLog from './PhotoLog.jsx'
@@ -24,7 +24,7 @@ const METRICS = [
   { key: 'hrv_ms', label: 'HRV', unit: 'ms', lowerIsBetter: false },
 ]
 
-export default function BodyCompScreen({ bodyComp, settings, refresh, showToast, setPending }) {
+export default function BodyCompScreen({ bodyComp, rides = [], settings, refresh, showToast, setPending }) {
   const [showForm, setShowForm] = useState(false)
 
   // The store hands back newest-first; charts and trends need oldest-first.
@@ -41,6 +41,17 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
     [chronological],
   )
   const latest = chronological[chronological.length - 1] ?? null
+
+  /**
+   * HRV gets its own reference, because the baseline row does not work for it.
+   *
+   * Weight and waist do not care that the baseline day happened to be a hard
+   * ride. HRV does — it drops sharply the night after a big effort, and if the
+   * study was baselined on a benchmark day, that single suppressed reading
+   * becomes the number every later night is measured against. Here it turned a
+   * flat HRV trend into a reported 63% gain.
+   */
+  const hrvReference = useMemo(() => preTrainingHrv(chronological, rides), [chronological, rides])
 
   const chartData = chronological.map((m) => ({
     date: formatShortDate(m.measured_at),
@@ -202,7 +213,10 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
           <h3 style={{ fontSize: 'var(--text-lg)' }}>Baseline vs. now</h3>
           <StatGrid>
             {METRICS.map((metric) => {
-              const from = baseline[metric.key] ?? chronological.find((m) => m[metric.key] != null)?.[metric.key]
+              const usePreTraining = metric.key === 'hrv_ms' && hrvReference
+              const from = usePreTraining
+                ? hrvReference.ms
+                : baseline[metric.key] ?? chronological.find((m) => m[metric.key] != null)?.[metric.key]
               const to = latest[metric.key]
               if (from == null || to == null) return null
               const delta = trendDelta([from, to], { lowerIsBetter: metric.lowerIsBetter })
@@ -214,7 +228,11 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
                   value={to}
                   unit={metric.unit}
                   tone={delta.improved ? 'good' : 'bad'}
-                  hint={`${delta.change > 0 ? '+' : ''}${delta.change} from ${from}`}
+                  hint={
+                    usePreTraining
+                      ? `${delta.change > 0 ? '+' : ''}${delta.change} from ${from} (${hrvReference.nights}-night pre-training mean)`
+                      : `${delta.change > 0 ? '+' : ''}${delta.change} from ${from}`
+                  }
                 />
               )
             })}
@@ -228,6 +246,21 @@ export default function BodyCompScreen({ bodyComp, settings, refresh, showToast,
               />
             )}
           </StatGrid>
+
+          {hrvReference && (
+            <ScienceNote title="Why HRV uses a different reference">
+              HRV is compared against the mean of the {hrvReference.nights} night
+              {hrvReference.nights === 1 ? '' : 's'} before the first logged ride
+              ({formatShortDate(hrvReference.from)}
+              {hrvReference.from !== hrvReference.to && ` – ${formatShortDate(hrvReference.to)}`}),
+              not against the baseline measurement. rMSSD falls sharply the night after a hard
+              effort, so if the baseline day involved a real ride, that reading records the ride
+              rather than the resting state — and every later night then gets measured against an
+              artificially low number.
+              {!hrvReference.established &&
+                ' Only one night sits before the first ride, so treat this reference as provisional.'}
+            </ScienceNote>
+          )}
 
           <ScienceNote title="What this means">
             Resting heart rate is the most telling number here. As endurance training thickens the

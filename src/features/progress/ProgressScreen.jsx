@@ -35,6 +35,7 @@ import {
   aerobicEfficiencyTrend,
   MIN_BAND_MINUTES,
   resolveStudyStart,
+  preTrainingHrv,
   studyProgress,
 } from '../../data/metrics.js'
 import {
@@ -136,20 +137,26 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
     [sortedBody],
   )
   const latestBody = sortedBody[sortedBody.length - 1] ?? null
+  // See preTrainingHrv: the baseline row is the wrong reference for HRV when
+  // the baseline day carried a real ride.
+  const hrvReference = useMemo(() => preTrainingHrv(sortedBody, rides), [sortedBody, rides])
 
   // Daily Readiness HUD Score
   const readiness = useMemo(
     () =>
       dailyReadiness({
         hrv: latestBody?.hrv_ms != null ? Number(latestBody.hrv_ms) : null,
-        hrvBaseline: latestHrvBand?.baselineHrv ?? (baselineBody?.hrv_ms != null ? Number(baselineBody.hrv_ms) : null),
+        hrvBaseline:
+          latestHrvBand?.baselineHrv ??
+          hrvReference?.ms ??
+          (baselineBody?.hrv_ms != null ? Number(baselineBody.hrv_ms) : null),
         restingHr: latestBody?.resting_hr != null ? Number(latestBody.resting_hr) : null,
         restingHrBaseline: baselineBody?.resting_hr != null ? Number(baselineBody.resting_hr) : null,
         // Null, not 0 — see DashboardScreen. An absent training balance must
         // not contribute a score of its own.
         recentTsb: latestPmc?.tsb ?? null,
       }),
-    [latestBody, baselineBody, latestHrvBand, latestPmc],
+    [latestBody, baselineBody, latestHrvBand, hrvReference, latestPmc],
   )
 
   // Intensity distribution across every ride whose track carries heart rate.
@@ -643,7 +650,11 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
       latestBody
         ? // Units only where there is a value to carry them: "— ms" reads like a
           // failed measurement rather than an absent one.
-          `- **Current Resting HR:** ${latestBody.resting_hr != null ? `${latestBody.resting_hr} bpm` : '—'}\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'}\n- **Autonomic Status:** ${autonomicLine}`
+          `- **Current Resting HR:** ${latestBody.resting_hr != null ? `${latestBody.resting_hr} bpm` : '—'}\n- **Current HRV (rMSSD):** ${latestBody.hrv_ms != null ? `${latestBody.hrv_ms} ms` : '—'}${
+            hrvReference
+              ? `\n- **Pre-training HRV reference:** ${hrvReference.ms} ms (mean of ${hrvReference.nights} night${hrvReference.nights === 1 ? '' : 's'} before the first ride, ${hrvReference.from}${hrvReference.from !== hrvReference.to ? ` – ${hrvReference.to}` : ''}). Used instead of the baseline measurement because rMSSD recorded the night after a hard effort reflects that effort, not the resting state.`
+              : ''
+          }\n- **Autonomic Status:** ${autonomicLine}`
         : ``,
       ``,
       `## 5. Repeated Route Progress (Identical Course Control)`,
