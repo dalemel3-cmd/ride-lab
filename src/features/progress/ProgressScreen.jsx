@@ -21,6 +21,7 @@ import {
   summarize,
   efficiencyBySurface,
   routeProgress,
+  CROSS_SOURCE_DISTANCE_BIAS_PCT,
   hrZoneRanges,
   performanceManagementChart,
   hrvAutonomicBands,
@@ -665,7 +666,11 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
         ? routeGains
             .map(
               (r) =>
-                `### ${r.route} (${r.rides}x)\n- Dates: ${r.firstDate} → ${r.latestDate}\n- Speed: ${r.speed?.first ?? '—'} → ${r.speed?.latest ?? '—'} mph\n- Cardiac Cost: ${r.beatsPerMile?.first ?? '—'} → ${r.beatsPerMile?.latest ?? '—'} beats/mi`,
+                `### ${r.route} (${r.rides}x)\n- Dates: ${r.firstDate} → ${r.latestDate}\n- Speed: ${r.speed?.first ?? '—'} → ${r.speed?.latest ?? '—'} mph${r.speed?.conclusive === false ? ' *(within device noise — not conclusive)*' : ''}\n- Cardiac Cost: ${r.beatsPerMile?.first ?? '—'} → ${r.beatsPerMile?.latest ?? '—'} beats/mi${r.beatsPerMile?.conclusive === false ? ' *(within device noise — not conclusive)*' : ''}${
+                  r.mixedSources
+                    ? `\n- **Recording caveat:** these rides were logged by different devices (${r.sources.join(', ')}). On identical ground the two measured distances differing by ~${r.noiseFloorPct}%, and both figures above are distance-sensitive, so changes smaller than that are measurement rather than adaptation.`
+                    : ''
+                }`,
             )
             .join('\n\n')
         : `- No route ridden twice yet. Repeating one course is the cleanest control the study has: same distance, same climbing, same surface, so a change in speed or beats-per-mile is adaptation rather than a different day out.`,
@@ -1220,6 +1225,15 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
               <span className="muted">
                 {formatShortDate(r.firstDate)} → {formatShortDate(r.latestDate)}
               </span>
+              {r.mixedSources && (
+                <span
+                  className="muted"
+                  style={{ fontSize: 'var(--text-xs)', color: 'var(--status-warn)' }}
+                >
+                  Recorded by different devices — distance on identical ground differs by about{' '}
+                  {r.noiseFloorPct}%, so a smaller change than that is measurement, not fitness.
+                </span>
+              )}
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginTop: 4 }}>
                 {r.speed && (
@@ -1229,9 +1243,24 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                     </div>
                     <div style={{ fontSize: 'var(--text-base)' }}>
                       {r.speed.first} →{' '}
-                      <strong style={{ color: r.speed.improved ? 'var(--status-success)' : 'var(--color-text)' }}>
+                      <strong
+                        style={{
+                          color:
+                            r.speed.conclusive === false
+                              ? 'var(--color-text-muted)'
+                              : r.speed.improved
+                                ? 'var(--status-success)'
+                                : 'var(--color-text)',
+                        }}
+                      >
                         {r.speed.latest} mph
                       </strong>
+                      {r.speed.conclusive === false && (
+                        <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                          {' '}
+                          — within device noise
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1244,11 +1273,22 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
                       {r.beatsPerMile.first} →{' '}
                       <strong
                         style={{
-                          color: r.beatsPerMile.improved ? 'var(--status-success)' : 'var(--color-text)',
+                          color:
+                            r.beatsPerMile.conclusive === false
+                              ? 'var(--color-text-muted)'
+                              : r.beatsPerMile.improved
+                                ? 'var(--status-success)'
+                                : 'var(--color-text)',
                         }}
                       >
                         {r.beatsPerMile.latest}
                       </strong>
+                      {r.beatsPerMile.conclusive === false && (
+                        <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                          {' '}
+                          — within device noise
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1258,7 +1298,11 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
 
           <ScienceNote title="The comparison that actually controls for terrain">
             Same trail, same climbs, same distance — so anything that changed is you, not the
-            course.
+            course. One caveat the course cannot control: a phone and a bike computer do not
+            agree about how long a road is. Measured here on identical ground, the two differ by
+            roughly {CROSS_SOURCE_DISTANCE_BIAS_PCT}%, and both speed and beats-per-mile are
+            distance-sensitive — so a change smaller than that across two devices is the devices
+            disagreeing, not an adaptation. Ride the benchmark on the same device every time.
           </ScienceNote>
         </section>
       )}

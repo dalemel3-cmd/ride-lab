@@ -585,6 +585,47 @@ export function aerobicEfficiencyTrend(rides = [], options = {}) {
  * climbs, same distance — so a change in time or heart rate is a change in the
  * rider rather than in the terrain.
  */
+/**
+ * Which device recorded a ride, for the purpose of comparing distances.
+ *
+ * Rides imported from Ride with GPS carry `source`; anything logged by hand or
+ * from a GPX file does not. That distinction matters because the two disagree
+ * about how long the same road is.
+ */
+export function recordingSource(ride) {
+  return ride?.source ? String(ride.source) : 'manual'
+}
+
+/**
+ * Distance disagreement between recording sources on identical ground.
+ *
+ * Measured, not assumed: the Grand Blvd → Razorback Greenway course ridden on
+ * 2026-08-27 (hand-logged GPX, 21 points/min) and 2026-08-30 (Ride with GPS, 65
+ * points/min) share a start point, a turnaround 2.49 vs 2.48 miles out, and a
+ * bounding box agreeing to within 0.07 mi — the same ride — yet measured 8.68
+ * and 8.32 track miles. Decimating the dense track to the sparse one's rate
+ * only costs 0.8%, so sampling interval does not explain a 4.3% gap; the
+ * per-point noise of the phone GPS does, and it inflates in one direction.
+ *
+ * This is the threshold below which a same-route change means nothing when the
+ * two rides came from different devices. It is deliberately a single measured
+ * figure with its provenance written down rather than a tuned constant.
+ */
+export const CROSS_SOURCE_DISTANCE_BIAS_PCT = 4.3
+
+/**
+ * Is a change big enough to mean something?
+ *
+ * Same device: any change stands, since nothing systematic separates the two
+ * rides. Different devices: the change has to clear the measured disagreement
+ * between them first. Returns true when there is no confound to clear.
+ */
+function exceedsNoise(first, latest, mixedSources) {
+  if (!mixedSources) return true
+  if (!Number.isFinite(first) || !Number.isFinite(latest) || first === 0) return false
+  return Math.abs((latest - first) / first) * 100 > CROSS_SOURCE_DISTANCE_BIAS_PCT
+}
+
 export function routeProgress(rides = []) {
   const byRoute = new Map()
 
@@ -608,14 +649,37 @@ export function routeProgress(rides = []) {
     const firstSpeed = avgSpeed(first.distance_mi, first.duration_min)
     const latestSpeed = avgSpeed(latest.distance_mi, latest.duration_min)
 
+    // Both of these numbers are distance-sensitive, so a device that measures
+    // the same road 4.3% long moves them without the rider changing at all —
+    // beats/mile down, speed up, both reading as adaptation. The comparison is
+    // still shown, because refusing to show it would hide the study's only
+    // repeated course; it is shown with the confound attached.
+    const firstSource = recordingSource(first)
+    const latestSource = recordingSource(latest)
+    const mixedSources = firstSource !== latestSource
+    const sources = [...new Set(sorted.map(recordingSource))].sort()
+
     results.push({
       route: latest.route_name,
       rides: group.length,
       firstDate: recordDate(first),
       latestDate: recordDate(latest),
+      sources,
+      mixedSources,
+      // Below this, a change is inside the noise between two devices rather
+      // than evidence of anything. Null when both rides came from the same one.
+      noiseFloorPct: mixedSources ? CROSS_SOURCE_DISTANCE_BIAS_PCT : null,
       beatsPerMile:
         firstBpm !== null && latestBpm !== null
-          ? { first: firstBpm, latest: latestBpm, change: latestBpm - firstBpm, improved: latestBpm < firstBpm }
+          ? {
+              first: firstBpm,
+              latest: latestBpm,
+              change: latestBpm - firstBpm,
+              improved: latestBpm < firstBpm,
+              // A change smaller than the disagreement between the two devices
+              // is not a finding, however much it looks like one.
+              conclusive: exceedsNoise(firstBpm, latestBpm, mixedSources),
+            }
           : null,
       speed:
         firstSpeed !== null && latestSpeed !== null
@@ -624,6 +688,7 @@ export function routeProgress(rides = []) {
               latest: Math.round(latestSpeed * 10) / 10,
               change: Math.round((latestSpeed - firstSpeed) * 10) / 10,
               improved: latestSpeed > firstSpeed,
+              conclusive: exceedsNoise(firstSpeed, latestSpeed, mixedSources),
             }
           : null,
     })

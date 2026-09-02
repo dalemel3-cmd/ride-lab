@@ -44,6 +44,8 @@ import {
   resolveStudyStart,
   studyProgress,
   preTrainingHrv,
+  recordingSource,
+  CROSS_SOURCE_DISTANCE_BIAS_PCT,
 } from '../src/data/metrics.js'
 import {
   startOfWeek,
@@ -718,6 +720,36 @@ check('missing readings are skipped', preTrainingHrv(
   ],
   hrvRides,
 ).nights, 1)
+
+console.log('\nCross-device route comparison')
+check('an imported ride reports its source', recordingSource({ source: 'ridewithgps' }), 'ridewithgps')
+check('a hand-logged ride is manual', recordingSource({ source: null }), 'manual')
+check('as is one with no source field at all', recordingSource({}), 'manual')
+
+// The real pair. Same start, same turnaround to within 0.01 mi, same bounding
+// box — but 8.79 mi by phone and 8.33 mi by Ride with GPS. Both figures below
+// are distance-sensitive, so the device change alone moves them.
+const sameRoute = [
+  { ridden_at: '2026-08-27T23:44:00Z', route_name: 'Grand Blvd to Razorback Greenway', distance_mi: 8.79, duration_min: 46, avg_hr: 127, source: null },
+  { ridden_at: '2026-08-30T22:55:00Z', route_name: 'Grand Blvd to Razorback Greenway', distance_mi: 8.33, duration_min: 38, avg_hr: 145, source: 'ridewithgps' },
+]
+const crossDevice = routeProgress(sameRoute)[0]
+check('the mixed devices are flagged', crossDevice.mixedSources, true)
+check('and both are named', crossDevice.sources, ['manual', 'ridewithgps'])
+check('the noise floor is reported', crossDevice.noiseFloorPct, CROSS_SOURCE_DISTANCE_BIAS_PCT)
+// 665 → 661 is 0.6%: nowhere near the 4.3% the devices disagree by, so it is
+// not evidence of anything, however much "beats per mile fell" reads like it.
+check('a sub-threshold cardiac-cost change is not conclusive', crossDevice.beatsPerMile.conclusive, false)
+check('though the direction is still reported', crossDevice.beatsPerMile.improved, true)
+// 11.5 → 13.2 mph is 14.8%, comfortably clear of the floor.
+check('a change well past the floor stands', crossDevice.speed.conclusive, true)
+
+// Same device throughout: nothing systematic separates the rides, so no floor.
+const sameDevice = sameRoute.map((r) => ({ ...r, source: 'ridewithgps' }))
+const clean = routeProgress(sameDevice)[0]
+check('one device means no mixed-source flag', clean.mixedSources, false)
+check('and no noise floor', clean.noiseFloorPct, null)
+check('so even a small change is reported as real', clean.beatsPerMile.conclusive, true)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

@@ -58,9 +58,10 @@ HR, so it adds little here.
    Note the seasonal confound documented there — an August-to-December
    comparison in Arkansas is biased toward flattering the rider, and the
    mid-study repeats are the cleaner evidence.
-4. **Same-route distance varies ~5%** — 8.79 mi vs 8.33 mi on identical ground.
-   That difference alone moves a beats-per-mile comparison from "flat" to
-   "-5.7%". Worth finding out whether one track is short.
+4. **Ride the benchmark on one device.** The same-route variance is diagnosed
+   (see gotchas): it is the phone reading ~4.3% long against Ride with GPS, not
+   a short track. `routeProgress` now flags mixed-device comparisons, but the
+   real fix is behavioural — record every benchmark the same way.
 6. **The readiness score steps rather than glides.** Its bands are hard
    thresholds, so a TSB of -14.9 and -15.1 score ten points apart. Smooth
    interpolation between band edges would make the number less twitchy.
@@ -91,6 +92,15 @@ These are not hypothetical — each one shipped and had to be found in the data.
   three beats. Measured against it the case study claimed a 63% HRV gain; the
   honest figure against the pre-training nights is ~15%, and the real finding is
   a flat mean with day-to-day variability halving. Use `preTrainingHrv`.
+- **Two recording sources measure the same road differently.** Rides carrying
+  `source = 'ridewithgps'` log ~65 points/min; hand-logged and GPX rides log
+  10-24. On the Grand Blvd → Razorback Greenway course — same start, turnaround
+  agreeing to 0.01 mi, bounding box to 0.07 mi — the phone measured 8.68 track
+  miles and Ride with GPS 8.32, a 4.3% gap. It is *not* the sample interval:
+  decimating the dense track to the sparse rate costs only 0.8%. It is per-point
+  GPS noise, and it inflates in one direction. Speed and beats-per-mile are both
+  distance-sensitive, so a cross-device change under 4.3% is the devices
+  disagreeing. See `CROSS_SOURCE_DISTANCE_BIAS_PCT` and `routeProgress`.
 - **The store returns rides newest-first.** `slice(-10)` gets the *oldest* ten.
 - **ACWR compares 7 days against 28**, never against the 42-day CTL. Pass
   `acwrChronic`, not `ctl`. Getting this wrong reported an ACWR of 5.15 in
