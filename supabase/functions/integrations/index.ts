@@ -764,6 +764,17 @@ async function backfillRideHeartRate(
     .eq('user_id', userId)
     .gte('ridden_at', since)
     .not('track', 'is', null)
+    // A ride excluded from analysis is not going to be charted whatever heart
+    // rate we find for it, and the scan below is the most expensive thing this
+    // function does — an aborted mechanical spent the whole 6,000-sample budget
+    // and then reported the miss as though data were missing.
+    .or('excluded.is.null,excluded.eq.false')
+
+  // 100 samples a page. Wrist heart rate lands roughly once a minute, so this
+  // covers about four days of continuous sampling — enough to reach a recent
+  // ride, not enough to reach one from three weeks ago. The filter below is a
+  // lower bound only, so there is no way to page straight to the ride window.
+  const PAGE_CAP = 60
 
   let ridesUpdated = 0
   let pointsMatched = 0
@@ -831,11 +842,19 @@ async function backfillRideHeartRate(
         // found, the pages have moved past the ride in whichever direction
         // they run.
         if (samples.length === before && samples.length > 0) break
-      } while (pageToken && pages < 60)
+      } while (pageToken && pages < PAGE_CAP)
 
       if (samples.length === 0) {
+        // Two different outcomes, and they were being reported as one. Stopping
+        // with a page token still in hand means the budget ran out mid-scan, so
+        // the ride's samples may well exist further on; only an exhausted token
+        // is evidence that Google has no heart rate for that window. Saying
+        // "none inside the window" for both sent us looking for a missing strap
+        // when the real answer was that the scan never got there.
         notes.push(
-          `heart rate: scanned ${scanned} samples over ${pages} pages, none inside the ${day} ride window`,
+          pageToken
+            ? `heart rate: gave up after ${scanned} samples over ${pages} pages without reaching the ${day} ride window — the samples between now and then used the whole budget`
+            : `heart rate: scanned ${scanned} samples over ${pages} pages, none inside the ${day} ride window`,
         )
         continue
       }
