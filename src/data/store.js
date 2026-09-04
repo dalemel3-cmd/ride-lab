@@ -181,8 +181,19 @@ export async function loadTable(table) {
   const cached = sortRows(table, readCache(table))
 
   try {
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData?.session) {
+      return { rows: cached, fromCache: true }
+    }
+
     const { data, error } = await supabase.from(table).select('*')
     if (error) throw error
+
+    // Guard: if server unexpectedly returns 0 rows but local cache has rows,
+    // do not wipe out existing history.
+    if ((!data || data.length === 0) && cached.length > 0) {
+      return { rows: cached, fromCache: true }
+    }
 
     const queued = readQueue().filter((op) => op.table === table)
 

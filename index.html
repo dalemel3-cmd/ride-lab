@@ -50,6 +50,18 @@
     </noscript>
 
     <title>Ride Lab</title>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          for (var i = 0; i < regs.length; i++) {
+            regs[i].update();
+          }
+        });
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          window.location.reload();
+        });
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
