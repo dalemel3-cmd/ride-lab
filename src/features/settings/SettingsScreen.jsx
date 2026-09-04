@@ -296,6 +296,48 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
       <MetricGuide />
 
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <h3 style={{ fontSize: 'var(--text-base)' }}>App Updates & Offline Cache</h3>
+        <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>
+          If your mobile device is displaying an older cached version or hasn't updated to match the web app, tap below to pull the latest service worker bundle and refresh data.
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <button
+            className="btn"
+            style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            onClick={async () => {
+              showToast('Checking for app updates...')
+              if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+                const reg = await navigator.serviceWorker.getRegistration()
+                if (reg) await reg.update()
+              }
+              await refresh()
+              showToast('Data and cache updated')
+            }}
+          >
+            <RefreshCw size={16} aria-hidden="true" /> Check for updates
+          </button>
+          <button
+            className="btn"
+            style={{ minHeight: 44, color: 'var(--status-warn)' }}
+            onClick={async () => {
+              if (!window.confirm('Force clear app cache and reload? Your cloud data is safe.')) return
+              if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations()
+                for (const r of registrations) await r.unregister()
+              }
+              if (typeof window !== 'undefined' && 'caches' in window) {
+                const keys = await caches.keys()
+                for (const k of keys) await caches.delete(k)
+              }
+              window.location.reload()
+            }}
+          >
+            Clear cache & reload
+          </button>
+        </div>
+      </section>
+
+      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 style={{ fontSize: 'var(--text-base)' }}>Account</h3>
         <button className="btn btn-danger" style={{ alignSelf: 'flex-start' }} onClick={handleSignOut}>
           <LogOut size={16} aria-hidden="true" /> Sign out

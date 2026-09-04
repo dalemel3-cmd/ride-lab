@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, Bike, HeartPulse, NotebookPen, Repeat, TrendingUp, Settings as SettingsIcon } from 'lucide-react'
+import { Activity, Bike, HeartPulse, NotebookPen, Repeat, TrendingUp, Settings as SettingsIcon, RotateCw } from 'lucide-react'
 import { loadTable, syncQueue, queueLength, TABLES } from './data/store.js'
 import { loadSettings, saveSettings } from './settings.js'
 
@@ -72,6 +72,8 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
+  const [refreshing, setRefreshing] = useState(false)
+
   // One timer, replaced rather than stacked. Each call used to start its own
   // and none was ever cleared, so two toasts in quick succession — "Ride saved"
   // then "Synced 1 pending entry" — left the first one's timer running, and it
@@ -86,53 +88,85 @@ export default function App() {
   useEffect(() => () => clearTimeout(toastTimer.current), [])
 
   const refresh = useCallback(async () => {
-    const [rd, bc, jn] = await Promise.all([
-      loadTable(TABLES.rides),
-      loadTable(TABLES.bodyComp),
-      loadTable(TABLES.journal),
-    ])
+    setRefreshing(true)
+    try {
+      const [rd, bc, jn] = await Promise.all([
+        loadTable(TABLES.rides),
+        loadTable(TABLES.bodyComp),
+        loadTable(TABLES.journal),
+      ])
 
-    setRides(rd.rows)
-    setBodyComp(bc.rows)
-    setJournal(jn.rows)
-
-    setPending(queueLength())
+      setRides(rd.rows)
+      setBodyComp(bc.rows)
+      setJournal(jn.rows)
+      setPending(queueLength())
+    } finally {
+      setRefreshing(false)
+    }
   }, [])
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+  // Full bidirectional sync: triggers Service Worker update check, drains offline
+  // writes to Supabase, and re-reads all tables so data stays consistent across
+  // phone, web, and background integrations.
+  const handleFullSync = useCallback(async (manual = false) => {
+    setRefreshing(true)
+    try {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistration().then((reg) => reg?.update())
+      }
 
-  // Drain the offline queue whenever there's a plausible reason it might now
-  // succeed: app start, regained connectivity, or the app coming back to the
-  // foreground after being backgrounded mid-ride.
+      const result = await syncQueue()
+      setPending(result.remaining)
+
+      await refresh()
+
+      if (result.synced > 0) {
+        showToast(`Synced ${result.synced} pending ${result.synced === 1 ? 'entry' : 'entries'}`)
+      } else if (manual) {
+        showToast('Updated from cloud')
+      }
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refresh, showToast])
+
+  // Drain the offline queue and reconcile with the cloud whenever there's a plausible
+  // reason data might have changed: app start, regained connectivity, window focus,
+  // or coming back to the foreground from a backgrounded mobile PWA state.
   useEffect(() => {
     let cancelled = false
 
-    const attemptSync = async () => {
-      const result = await syncQueue()
+    const triggerSync = async () => {
       if (cancelled) return
-      setPending(result.remaining)
-      if (result.synced > 0) {
-        showToast(`Synced ${result.synced} pending ${result.synced === 1 ? 'entry' : 'entries'}`)
-        refresh()
-      }
+      await handleFullSync(false)
     }
 
-    attemptSync()
+    triggerSync()
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') attemptSync()
+      if (document.visibilityState === 'visible') triggerSync()
     }
 
-    window.addEventListener('online', attemptSync)
+    window.addEventListener('online', triggerSync)
+    window.addEventListener('focus', onVisible)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       cancelled = true
-      window.removeEventListener('online', attemptSync)
+      window.removeEventListener('online', triggerSync)
+      window.removeEventListener('focus', onVisible)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [refresh, showToast])
+  }, [handleFullSync])
+
+  // Reconcile in the background when navigating between screens (throttled to 15s)
+  const lastNavRefreshRef = useRef(0)
+  useEffect(() => {
+    const now = Date.now()
+    if (now - lastNavRefreshRef.current > 15000) {
+      lastNavRefreshRef.current = now
+      refresh()
+    }
+  }, [screen, refresh])
 
   const handleUpdateSettings = useCallback((next) => {
     setSettings(saveSettings(next))
@@ -144,6 +178,8 @@ export default function App() {
     bodyComp,
     journal,
     refresh,
+    refreshing,
+    handleFullSync,
     showToast,
     setPending,
   }
@@ -155,15 +191,37 @@ export default function App() {
           "Main", which a screen reader reads out as two identical landmarks —
           so they are named for what they are instead. */}
       <nav className="sidebar" aria-label="Sidebar">
-        <h1
-          style={{
-            padding: '0 14px 16px',
-            color: 'var(--color-accent)',
-            fontSize: 'var(--text-xl)',
-          }}
-        >
-          Ride Lab
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px 16px' }}>
+          <h1
+            style={{
+              color: 'var(--color-accent)',
+              fontSize: 'var(--text-xl)',
+            }}
+          >
+            Ride Lab
+          </h1>
+          <button
+            type="button"
+            className="btn-icon"
+            style={{
+              minWidth: 44,
+              minHeight: 44,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+              border: 'none',
+              color: refreshing ? 'var(--color-accent)' : 'var(--color-text-muted)',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+            onClick={() => handleFullSync(true)}
+            aria-label="Refresh data"
+            title="Refresh data"
+          >
+            <RotateCw size={16} className={refreshing ? 'spin' : ''} aria-hidden="true" />
+          </button>
+        </div>
         {NAV.map(({ key, label, Icon }) => (
           <button
             key={key}
@@ -186,6 +244,45 @@ export default function App() {
           Settings
         </button>
       </nav>
+
+      {/* Mobile Top App Bar with Quick Sync / Refresh */}
+      <header className="mobile-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-lg)',
+              color: 'var(--color-accent)',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Ride Lab
+          </span>
+          <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+            · {[...NAV, { key: 'settings', label: 'Settings' }].find((n) => n.key === screen)?.label ?? 'Today'}
+          </span>
+        </div>
+        <button
+          type="button"
+          aria-label="Refresh data"
+          title="Refresh data"
+          style={{
+            minWidth: 44,
+            minHeight: 44,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'none',
+            border: 'none',
+            color: refreshing ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            cursor: 'pointer',
+            padding: 0,
+          }}
+          onClick={() => handleFullSync(true)}
+        >
+          <RotateCw size={18} className={refreshing ? 'spin' : ''} aria-hidden="true" />
+        </button>
+      </header>
 
       <main className="app-main" ref={mainRef}>
         <div className="content-width">

@@ -3,6 +3,32 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import AuthGate from './auth/AuthGate.jsx'
 import './styles.css'
+import { registerSW } from 'virtual:pwa-register'
+
+let refreshing = false
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return
+    refreshing = true
+    window.location.reload()
+  })
+}
+
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    updateSW(true)
+  },
+  onRegisteredSW(swUrl, registration) {
+    if (registration) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          registration.update()
+        }
+      })
+    }
+  },
+})
 
 /**
  * Catches render errors so a bad chart can't leave the rider staring at a blank
