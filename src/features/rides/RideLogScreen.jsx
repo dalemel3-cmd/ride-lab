@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { Plus, Satellite, Trash2, Pencil, Upload } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { avgSpeed, trainingLoad, hrZone, summarize, timeInZones } from '../../data/metrics.js'
-import { formatDuration, formatShortDate, toDateString, toTimeString, startOfWeek, recordDate } from '../../data/dates.js'
+import { formatDuration, formatShortDate, formatWeekRange, toDateString, toTimeString, startOfWeek, recordDate } from '../../data/dates.js'
 import { StatGrid, StatTile, EmptyState } from '../../components/ui.jsx'
 import ZoneBar from '../../components/ZoneBar.jsx'
 import { rideClimbFeet } from '../../data/track.js'
@@ -327,7 +327,7 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
               }}
             >
               <h3 style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-                Week of {formatShortDate(week)}
+                Week of {formatWeekRange(week)}
               </h3>
               <span className="muted">
                 {weekRides.length} {weekRides.length === 1 ? 'ride' : 'rides'} ·{' '}

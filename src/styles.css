@@ -137,6 +137,57 @@ h3 {
   }
 }
 
+.version-pill {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--color-accent);
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.version-pill:hover,
+.version-pill:focus-visible {
+  background: rgba(34, 211, 238, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.35);
+}
+
+.pull-to-refresh-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  width: 100%;
+  pointer-events: none;
+  margin-bottom: 4px;
+}
+
+.pull-to-refresh-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(15, 30, 48, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 14px rgba(34, 211, 238, 0.15);
+  color: var(--color-text);
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);

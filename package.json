@@ -1,7 +1,7 @@
 {
   "name": "ride-lab",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "A mobile PWA tracking a 4-month cycling case study: rides, RPE, heart rate, body composition, and journal.",
   "scripts": {

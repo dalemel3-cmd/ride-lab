@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Printer } from 'lucide-react'
-import { formatShortDate, formatDuration } from '../../data/dates.js'
+import { formatShortDate, formatWeekRange, formatDuration } from '../../data/dates.js'
 
 /**
  * The case study as a document, laid out for paper.
@@ -305,7 +305,7 @@ export default function StudyReport({
               <tbody>
                 {weeks.map((w) => (
                   <tr key={w.week}>
-                    <td>{formatShortDate(w.week)}</td>
+                    <td>{formatWeekRange(w.week)}</td>
                     <td>{w.rides}</td>
                     <td>{w.distanceMi}</td>
                     <td>{formatDuration(w.durationMin)}</td>

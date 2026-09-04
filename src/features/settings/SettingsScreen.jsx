@@ -14,6 +14,7 @@ import { NUMERIC_BOUNDS, SURFACES } from '../../settings.js'
 import { ScienceNote } from '../../components/ui.jsx'
 import ConnectionsCard from './ConnectionsCard.jsx'
 import MetricGuide from '../../components/MetricGuide.jsx'
+import { APP_VERSION } from '../../version.js'
 
 /**
  * Settings, plus the two operational escapes: force a sync, and export
@@ -296,9 +297,12 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
       <MetricGuide />
 
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h3 style={{ fontSize: 'var(--text-base)' }}>App Updates & Offline Cache</h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ fontSize: 'var(--text-base)' }}>App Updates & Offline Cache</h3>
+          <span className="version-pill">{APP_VERSION}</span>
+        </div>
         <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>
-          If your mobile device is displaying an older cached version or hasn't updated to match the web app, tap below to pull the latest service worker bundle and refresh data.
+          Running <strong>{APP_VERSION}</strong>. Pull down from the top on any screen to refresh, or use the controls below to check for service worker updates and reconcile cloud data.
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           <button

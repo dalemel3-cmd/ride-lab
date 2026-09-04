@@ -50,6 +50,8 @@ import {
 import { buildStudyReport } from '../src/features/progress/buildStudyReport.js'
 import {
   startOfWeek,
+  endOfWeek,
+  formatWeekRange,
   daysBetween,
   studyWeek,
   formatDuration,
@@ -232,6 +234,9 @@ console.log('\ndates')
 check('startOfWeek anchors to Monday', startOfWeek('2026-05-06'), '2026-05-04')
 check('a Monday is its own week start', startOfWeek('2026-05-04'), '2026-05-04')
 check('a Sunday belongs to the week that started Monday', startOfWeek('2026-05-10'), '2026-05-04')
+check('endOfWeek anchors to Sunday', endOfWeek('2026-05-04'), '2026-05-10')
+check('formatWeekRange formats single month week', formatWeekRange('2026-05-04'), 'May 4 – May 10')
+check('formatWeekRange handles month boundary', formatWeekRange('2026-08-31'), 'Aug 31 – Sep 6')
 check('daysBetween counts forward', daysBetween('2026-05-01', '2026-05-08'), 7)
 check('daysBetween goes negative backwards', daysBetween('2026-05-08', '2026-05-01'), -7)
 check('study week 1 is the start date itself', studyWeek('2026-05-01', '2026-05-01'), 1)

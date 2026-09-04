@@ -64,6 +64,24 @@ export function startOfWeek(dateStr) {
   return d.toISOString().slice(0, 10)
 }
 
+/** Sunday-anchored `YYYY-MM-DD` ending the 7-day week that started on `startDateStr`. */
+export function endOfWeek(startDateStr) {
+  const d = new Date(`${startDateStr}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) return startDateStr
+  d.setUTCDate(d.getUTCDate() + 6)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Human label for a full training week, e.g. "Aug 31 – Sep 6" or "May 4 – May 10".
+ */
+export function formatWeekRange(startDateStr) {
+  if (!startDateStr) return ''
+  const start = formatShortDate(startDateStr)
+  const end = formatShortDate(endOfWeek(startDateStr))
+  return `${start} – ${end}`
+}
+
 /** Whole days from `startStr` to `endStr` (negative if end precedes start). */
 export function daysBetween(startStr, endStr) {
   const a = new Date(`${startStr}T12:00:00Z`).getTime()

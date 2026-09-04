@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Activity, Bike, HeartPulse, NotebookPen, Repeat, TrendingUp, Settings as SettingsIcon, RotateCw } from 'lucide-react'
 import { loadTable, syncQueue, queueLength, TABLES } from './data/store.js'
 import { loadSettings, saveSettings } from './settings.js'
+import { APP_VERSION } from './version.js'
 
 // Each screen is split out so the first paint on a phone only pays for the one
 // being looked at — Progress in particular drags in all of Recharts.
@@ -73,6 +74,7 @@ export default function App() {
   }, [])
 
   const [refreshing, setRefreshing] = useState(false)
+  const [pullOffset, setPullOffset] = useState(0)
 
   // One timer, replaced rather than stacked. Each call used to start its own
   // and none was ever cleared, so two toasts in quick succession — "Ride saved"
@@ -167,6 +169,84 @@ export default function App() {
       refresh()
     }
   }, [screen, refresh])
+ 
+  // Touch-based pull-down refresh on the main scrollable container
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return
+
+    let startY = 0
+    let startX = 0
+    let isTracking = false
+    let isPulling = false
+
+    const onTouchStart = (e) => {
+      if (el.scrollTop <= 0 && e.touches.length === 1) {
+        startY = e.touches[0].clientY
+        startX = e.touches[0].clientX
+        isTracking = true
+        isPulling = false
+      } else {
+        isTracking = false
+        isPulling = false
+      }
+    }
+
+    const onTouchMove = (e) => {
+      if (!isTracking) return
+      if (el.scrollTop > 0) {
+        isTracking = false
+        isPulling = false
+        setPullOffset(0)
+        return
+      }
+
+      const touch = e.touches[0]
+      const deltaY = touch.clientY - startY
+      const deltaX = Math.abs(touch.clientX - startX)
+
+      // If user is mostly swiping horizontally, cancel vertical pull
+      if (!isPulling && deltaX > Math.abs(deltaY) && deltaX > 8) {
+        isTracking = false
+        return
+      }
+
+      if (deltaY > 0) {
+        isPulling = true
+        if (e.cancelable && deltaY > 10) {
+          e.preventDefault()
+        }
+        const damped = Math.min(75, Math.round(Math.pow(deltaY, 0.82)))
+        setPullOffset(damped)
+      } else {
+        setPullOffset(0)
+      }
+    }
+
+    const onTouchEnd = () => {
+      if (!isTracking && !isPulling) return
+      isTracking = false
+      isPulling = false
+      setPullOffset((current) => {
+        if (current >= 48) {
+          handleFullSync(true)
+        }
+        return 0
+      })
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [handleFullSync])
 
   const handleUpdateSettings = useCallback((next) => {
     setSettings(saveSettings(next))
@@ -202,24 +282,12 @@ export default function App() {
           </h1>
           <button
             type="button"
-            className="btn-icon"
-            style={{
-              minWidth: 44,
-              minHeight: 44,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'none',
-              border: 'none',
-              color: refreshing ? 'var(--color-accent)' : 'var(--color-text-muted)',
-              cursor: 'pointer',
-              padding: 0,
-            }}
+            className="version-pill"
             onClick={() => handleFullSync(true)}
-            aria-label="Refresh data"
-            title="Refresh data"
+            title={`Ride Lab ${APP_VERSION} · Click to refresh`}
+            aria-label={`App version ${APP_VERSION}, click to refresh`}
           >
-            <RotateCw size={16} className={refreshing ? 'spin' : ''} aria-hidden="true" />
+            {APP_VERSION}
           </button>
         </div>
         {NAV.map(({ key, label, Icon }) => (
@@ -245,7 +313,7 @@ export default function App() {
         </button>
       </nav>
 
-      {/* Mobile Top App Bar with Quick Sync / Refresh */}
+      {/* Mobile Top App Bar with Version Number */}
       <header className="mobile-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span
@@ -264,28 +332,48 @@ export default function App() {
         </div>
         <button
           type="button"
-          aria-label="Refresh data"
-          title="Refresh data"
-          style={{
-            minWidth: 44,
-            minHeight: 44,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'none',
-            border: 'none',
-            color: refreshing ? 'var(--color-accent)' : 'var(--color-text-muted)',
-            cursor: 'pointer',
-            padding: 0,
-          }}
+          className="version-pill"
           onClick={() => handleFullSync(true)}
+          title={`Ride Lab ${APP_VERSION} · Tap to refresh`}
+          aria-label={`App version ${APP_VERSION}, tap to refresh`}
         >
-          <RotateCw size={18} className={refreshing ? 'spin' : ''} aria-hidden="true" />
+          {APP_VERSION}
         </button>
       </header>
 
       <main className="app-main" ref={mainRef}>
         <div className="content-width">
+          {/* Pull-to-refresh indicator (mobile) */}
+          <div
+            className="pull-to-refresh-container"
+            style={{
+              height: refreshing ? 48 : pullOffset,
+              opacity: pullOffset > 8 || refreshing ? 1 : 0,
+              transform: `scale(${Math.min(1, Math.max(0.65, pullOffset / 48))})`,
+              transition: pullOffset === 0 ? 'height 0.25s ease, opacity 0.2s ease, transform 0.2s ease' : 'none',
+            }}
+            aria-hidden={!refreshing && pullOffset === 0}
+          >
+            <div className="pull-to-refresh-pill">
+              <RotateCw
+                size={16}
+                className={refreshing ? 'spin' : ''}
+                style={{
+                  transform: !refreshing ? `rotate(${Math.min(180, (pullOffset / 48) * 180)}deg)` : undefined,
+                  color: pullOffset >= 48 || refreshing ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                  transition: 'transform 0.1s ease, color 0.2s ease',
+                }}
+                aria-hidden="true"
+              />
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600 }}>
+                {refreshing
+                  ? 'Updating from cloud…'
+                  : pullOffset >= 48
+                    ? 'Release to refresh'
+                    : 'Pull down to refresh'}
+              </span>
+            </div>
+          </div>
           {pending > 0 && (
             <p
               className="muted"
