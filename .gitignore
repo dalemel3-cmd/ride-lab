@@ -13,3 +13,4 @@ test-results
 
 # Screenshots produced by tests/tour.js and tests/ui.js
 tests/*.png
+supabase/.temp
