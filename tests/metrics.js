@@ -46,6 +46,10 @@ import {
   preTrainingHrv,
   recordingSource,
   CROSS_SOURCE_DISTANCE_BIAS_PCT,
+  bestEffortCurve,
+  estimateLthr,
+  lthrZoneRanges,
+  zoneModel,
 } from '../src/data/metrics.js'
 import { buildStudyReport } from '../src/features/progress/buildStudyReport.js'
 import {
@@ -779,6 +783,109 @@ check('report flags provisional data maturity at top', sampleReport.includes('12
 check('report marks CTL as provisional with days remaining', sampleReport.includes('**Fitness (CTL - 42d):** 24 *(provisional — 12d of 42d history)*'), true)
 check('report marks ACWR as not yet interpretable', sampleReport.includes('*(not yet interpretable — needs 28d of history, has 12d)*'), true)
 check('report flags inconclusive cross-device delta', sampleReport.includes('*(within device noise — not conclusive)*'), true)
+console.log('\nBest-effort curve')
+// A track at a flat heart rate: every window must return that heart rate, and
+// the peak must not exceed it.
+const flat = (bpm, seconds, step = 1, t0 = 1_000_000_000_000) => {
+  const pts = []
+  for (let s = 0; s <= seconds; s += step) pts.push([36, -94, t0 + s * 1000, 300, bpm])
+  return pts
+}
+const flatCurve = bestEffortCurve([{ ridden_at: '2026-09-01T14:00:00Z', track: flat(150, 1800) }])
+check('a flat 30-minute ride reports its own rate at 20 min', flatCurve.best[1200], 150)
+check('and at 30 seconds', flatCurve.best[30], 150)
+check('the observed max is that rate, not higher', flatCurve.observedMax, 150)
+
+// A hard 20-minute hardBlock inside an easy ride. The best 20 minutes must find the
+// hardBlock rather than averaging it with the easy riding either side.
+const withBlock = [
+  ...flat(100, 600),
+  ...flat(165, 1200, 1, 1_000_000_000_000 + 601_000),
+  ...flat(100, 600, 1, 1_000_000_000_000 + 1_802_000),
+]
+const hardBlock = bestEffortCurve([{ ridden_at: '2026-09-01T14:00:00Z', track: withBlock }])
+check('a 20-minute hard block is found, not diluted', hardBlock.best[1200], 165)
+check('and the peak is that block, not an artefact', hardBlock.observedMax, 165)
+
+// The rule that matters most: a 20-minute average must never span a stop.
+// Two 15-minute halves at 170 either side of a five-minute gap are not a
+// 20-minute effort, and reporting 170 here would invent a threshold.
+const halves = [
+  ...flat(170, 900),
+  ...flat(170, 900, 1, 1_000_000_000_000 + 1_200_000),
+]
+const stopSplit = bestEffortCurve([{ ridden_at: '2026-09-01T14:00:00Z', track: halves }])
+check('two 15-minute halves are not a 20-minute effort', stopSplit.best[1200], null)
+check('but the 5-minute window still resolves within a half', stopSplit.best[300], 170)
+
+// Time-weighted, not sample-weighted — the two recording sources sample at very
+// different rates, so counting samples would quietly weight the dense track
+// more heavily inside the same window.
+//
+// 31 samples one second apart at 100 bpm, then two sparse samples at 200. The
+// best 60-second window runs t=10..70: 40 seconds held at 100 and 20 at 200,
+// which is 8000 beat-seconds over 60 = 133. Averaging the 24 samples in that
+// window instead gives 108, so the two answers cannot be confused.
+const uneven = [
+  ...flat(100, 30),
+  [36, -94, 1_000_000_000_000 + 50_000, 300, 200],
+  [36, -94, 1_000_000_000_000 + 70_000, 300, 200],
+]
+const timeWeighted = bestEffortCurve([{ ridden_at: '2026-09-01T14:00:00Z', track: uneven }], [60])
+check('samples are weighted by time, not by count', timeWeighted.best[60], 133)
+
+// A window nothing is long enough to fill reports null rather than a shorter
+// effort dressed up as a longer one.
+check('too short for the window is null', bestEffortCurve([
+  { ridden_at: '2026-09-01T14:00:00Z', track: flat(150, 300) },
+]).best[1200], null)
+check('no rides is a null curve, not zero', bestEffortCurve([]).observedMax, null)
+check('an excluded ride contributes nothing', bestEffortCurve([
+  { ridden_at: '2026-09-01T14:00:00Z', track: flat(200, 1800), excluded: true },
+]).observedMax, null)
+
+// A 4-second sampling interval must still resolve a 20-minute window; an
+// earlier version trimmed the window just under the bar and reported nothing.
+check('a sparse 4-second track still resolves 20 minutes', bestEffortCurve([
+  { ridden_at: '2026-09-01T14:00:00Z', track: flat(140, 1800, 4) },
+]).best[1200], 140)
+
+console.log('\nThreshold estimate and zone model')
+const lthrRides = [
+  { ridden_at: '2026-08-30T22:55:00Z', route_name: 'Greenway', rpe: 5, track: withBlock },
+]
+const est = estimateLthr(lthrRides)
+check('threshold is taken from the best 20 minutes', est.lthr, 165)
+// Never claim more than the data supports: nothing here was a maximal test.
+check('and is only ever a floor without a real test', est.confidence, 'floor')
+check('the hardest session on record is reported with it', est.hardestRpe, 5)
+check('as is where the effort came from', est.source.date, '2026-08-30')
+check('no long-enough ride means no estimate', estimateLthr([
+  { ridden_at: '2026-08-30T22:55:00Z', track: flat(150, 300) },
+]), null)
+
+// Friel's cycling percentages of LTHR. At 152: zone 2 is 81-90%, so 123-137.
+const friel = lthrZoneRanges(152)
+check('zone 2 spans 81-90% of threshold', [friel[1].lowBpm, friel[1].highBpm], [123, 137])
+check('zone 4 tops out at threshold itself', friel[3].highBpm, 152)
+check('and zone 5 starts there', friel[4].lowBpm, 152)
+check('the physiology text carries over from the max-anchored zones', Boolean(friel[1].effect), true)
+check('no threshold means no ranges', lthrZoneRanges(0), [])
+
+// Precedence: a tested threshold beats a derived one beats percentage-of-max.
+const tested = zoneModel({ rides: lthrRides, settings: { maxHr: 190, lthr: 168 } })
+check('a tested threshold wins', [tested.anchor, tested.value], ['lthr', 168])
+check('and is not provisional', tested.provisional, false)
+
+const derived = zoneModel({ rides: lthrRides, settings: { maxHr: 190 } })
+check('otherwise the ride-derived floor is used', [derived.anchor, derived.value], ['lthr', 165])
+check('and is marked provisional', derived.provisional, true)
+
+const fallback = zoneModel({ rides: [], settings: { maxHr: 190 } })
+check('with no usable rides it falls back to max', [fallback.anchor, fallback.value], ['max', 190])
+// The fallback is the *least* trustworthy branch, so it must never claim to be
+// settled — this is the anchor that has never been measured.
+check('and that fallback is provisional too', fallback.provisional, true)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

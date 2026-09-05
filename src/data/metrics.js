@@ -1434,3 +1434,262 @@ export function polarizedAudit(zoneDistributions) {
 }
 
 
+
+/**
+ * ---------------------------------------------------------------------------
+ * Zones from the rider's own data
+ * ---------------------------------------------------------------------------
+ *
+ * Every zone in this app has so far been a percentage of `settings.maxHr`, and
+ * that number is a guess: Tanaka's formula for a 30-year-old predicts 187, the
+ * settings say 190, and across 21,000 recorded heart-rate samples nothing has
+ * ever exceeded 170. The guess is load-bearing — the polarized audit's verdict
+ * on 513 minutes of riding moves from "69% easy" to "85% easy" depending purely
+ * on where the anchor is put, which means the question "am I riding easy
+ * enough?" currently has no answer.
+ *
+ * These functions extract what the rides can actually establish, and are
+ * careful to stop there. A max heart rate cannot be derived from submaximal
+ * riding, and no amount of data analysis substitutes for a test.
+ */
+
+/** Longest gap that still counts as continuous riding, in seconds. */
+const EFFORT_MAX_GAP_SEC = 30
+
+/**
+ * Durations the best-effort curve is sampled at, in seconds.
+ *
+ * 20 minutes is the one that matters — it is the standard field-test duration
+ * for lactate threshold — but the shorter windows are what show whether a peak
+ * is a real effort or a single spurious sample from a strap glitch.
+ */
+export const EFFORT_WINDOWS_SEC = [30, 60, 300, 1200]
+
+/**
+ * Best sustained heart rate over each window, across every analysable ride.
+ *
+ * This is the heart-rate analogue of a cycling power curve. A single peak is
+ * noise; a heart rate held for twenty minutes is a physiological fact, and it
+ * is the only thing in this dataset that can anchor a zone model.
+ *
+ * Returns `{ observedMax, best: { 30: n, 60: n, ... }, sources: {...}, samples }`
+ * with a null for any window no ride was long enough to fill.
+ */
+export function bestEffortCurve(rides = [], windows = EFFORT_WINDOWS_SEC) {
+  const best = new Map(windows.map((w) => [w, null]))
+  const sources = new Map(windows.map((w) => [w, null]))
+  let observedMax = null
+  let samples = 0
+
+  for (const ride of analysable(rides)) {
+    const track = ride?.track
+    if (!Array.isArray(track) || track.length < 2) continue
+
+    // Flatten to (time, hr) pairs, dropping anything unusable, then split into
+    // continuous segments — a rolling mean must never average across a stop.
+    const segments = []
+    let current = []
+    let previousT = null
+
+    for (const point of track) {
+      const t = toNumber(point?.[TRACK_TIME])
+      const hr = toNumber(point?.[TRACK_HR])
+      if (t === null || t <= 0 || hr === null || hr <= 0) continue
+      const seconds = t / 1000
+      if (previousT !== null && seconds - previousT > EFFORT_MAX_GAP_SEC) {
+        if (current.length > 1) segments.push(current)
+        current = []
+      }
+      current.push([seconds, hr])
+      previousT = seconds
+      samples += 1
+      if (observedMax === null || hr > observedMax) observedMax = hr
+    }
+    if (current.length > 1) segments.push(current)
+
+    for (const window of windows) {
+      for (const segment of segments) {
+        const mean = bestWindowMean(segment, window)
+        if (mean === null) continue
+        if (best.get(window) === null || mean > best.get(window)) {
+          best.set(window, mean)
+          sources.set(window, { date: recordDate(ride), route: ride.route_name ?? null })
+        }
+      }
+    }
+  }
+
+  return {
+    observedMax,
+    samples,
+    best: Object.fromEntries([...best].map(([w, v]) => [w, v === null ? null : Math.round(v)])),
+    sources: Object.fromEntries(sources),
+  }
+}
+
+/**
+ * Highest time-weighted mean over any window of `windowSec` in one segment.
+ *
+ * Time-weighted rather than a simple average of samples, because the two
+ * recording sources sample at very different rates (65/min from Ride with GPS,
+ * 10-24/min from a phone) and a sample average would silently weight the dense
+ * track more heavily inside the same window.
+ */
+function bestWindowMean(segment, windowSec) {
+  if (segment.length < 2) return null
+  const span = segment[segment.length - 1][0] - segment[0][0]
+  if (span < windowSec) return null
+
+  let bestMean = null
+  let start = 0
+  let area = 0
+
+  for (let i = 1; i < segment.length; i += 1) {
+    // Left-Riemann: a sample's heart rate is held until the next one arrives,
+    // the same convention timeInZones uses. Which rule matters less than the
+    // two of them agreeing, since their outputs get compared.
+    area += segment[i - 1][1] * (segment[i][0] - segment[i - 1][0])
+
+    // Advance the left edge only while the window would *still* be wide enough
+    // without its first interval, leaving the narrowest window that is at least
+    // `windowSec` across. Trimming to just under it instead would make every
+    // candidate window on a sparse 4-second track fall a sample short of the
+    // bar and report nothing at all.
+    while (start < i - 1 && segment[i][0] - segment[start + 1][0] >= windowSec) {
+      area -= segment[start][1] * (segment[start + 1][0] - segment[start][0])
+      start += 1
+    }
+
+    const width = segment[i][0] - segment[start][0]
+    if (width >= windowSec && width > 0) {
+      const mean = area / width
+      if (bestMean === null || mean > bestMean) bestMean = mean
+    }
+  }
+
+  return bestMean
+}
+
+/**
+ * Friel's cycling zones, as percentages of lactate threshold heart rate.
+ *
+ * Why threshold and not max. Max heart rate is the wrong anchor for three
+ * reasons: it cannot be measured without a maximal effort, which is unpleasant
+ * and not something to talk a new rider into; it barely moves with training, so
+ * it tells you nothing about progress; and getting it wrong silently rescales
+ * every zone. Threshold is testable with a 20-minute time trial, it *does* move
+ * as fitness improves — which makes it a progress metric in its own right — and
+ * it sits where the physiology actually changes.
+ *
+ * Percentages are Friel's published cycling scheme (*The Cyclist's Training
+ * Bible*), with 5a/5b/5c collapsed into a single zone 5 to stay consistent with
+ * the rest of this app.
+ */
+export const LTHR_ZONES = [
+  { zone: 1, label: 'Recovery', min: 0, max: 0.81 },
+  { zone: 2, label: 'Endurance', min: 0.81, max: 0.9 },
+  { zone: 3, label: 'Tempo', min: 0.9, max: 0.94 },
+  { zone: 4, label: 'Threshold', min: 0.94, max: 1.0 },
+  { zone: 5, label: 'VO2 Max', min: 1.0, max: 1.2 },
+]
+
+/**
+ * Absolute BPM boundaries from a threshold heart rate.
+ *
+ * Zone descriptions are reused from HR_ZONES so the app teaches the same
+ * physiology whichever anchor is in use — only the boundaries differ.
+ */
+export function lthrZoneRanges(lthr) {
+  const threshold = toNumber(lthr)
+  if (threshold === null || threshold <= 0) return []
+  return LTHR_ZONES.map((z) => {
+    const classic = HR_ZONES.find((c) => c.zone === z.zone)
+    return {
+      ...z,
+      color: classic?.color,
+      effect: classic?.effect,
+      lowBpm: Math.round(z.min * threshold),
+      highBpm: Math.round(z.max * threshold),
+    }
+  })
+}
+
+/**
+ * What the rides can say about threshold heart rate — and how firmly.
+ *
+ * The standard field test is 20 minutes all-out, with LTHR taken as the average
+ * of the final 20 minutes (Friel). Nothing in this log is an all-out effort:
+ * the hardest session recorded is RPE 7. So the best 20-minute heart rate on
+ * record is a **floor**, not a measurement — the rider can certainly hold at
+ * least that, and probably more.
+ *
+ * `confidence` is therefore never better than 'floor' without a real test, and
+ * the UI must not present the derived zones as though they were measured.
+ * Returns null when no ride is long enough to have a 20-minute window at all.
+ */
+export function estimateLthr(rides = [], { curve = null } = {}) {
+  const profile = curve ?? bestEffortCurve(rides)
+  const best20 = profile.best[1200]
+  if (best20 === null || best20 === undefined) return null
+
+  const source = profile.sources[1200]
+  const hardestRpe = analysable(rides).reduce((max, r) => {
+    const rpe = toNumber(r?.rpe)
+    return rpe !== null && rpe > max ? rpe : max
+  }, 0)
+
+  return {
+    lthr: best20,
+    // Only a genuine maximal test earns 'tested'. Nothing here sets it; it
+    // exists so a rider who runs the protocol can record the result and have
+    // the UI stop hedging.
+    confidence: 'floor',
+    hardestRpe,
+    observedMax: profile.observedMax,
+    source,
+  }
+}
+
+/**
+ * The zone model in force, and what it rests on.
+ *
+ * Precedence: a threshold the rider has tested and entered beats one derived
+ * from ride data, which beats percentage-of-max — because the derived floor is
+ * still built from real efforts, while the max is a formula nobody has checked.
+ *
+ * Every branch reports `basis` and `provisional` so no screen can present a
+ * guessed anchor as a measured one.
+ */
+export function zoneModel({ rides = [], settings = {} } = {}) {
+  const testedLthr = toNumber(settings.lthr)
+  if (testedLthr !== null && testedLthr > 0) {
+    return {
+      anchor: 'lthr',
+      value: testedLthr,
+      basis: 'Tested threshold heart rate',
+      provisional: false,
+      ranges: lthrZoneRanges(testedLthr),
+    }
+  }
+
+  const estimate = estimateLthr(rides)
+  if (estimate) {
+    return {
+      anchor: 'lthr',
+      value: estimate.lthr,
+      basis: `Best 20 minutes on record (${estimate.lthr} bpm), which is a floor — the hardest session logged is RPE ${estimate.hardestRpe}, so the true threshold is higher`,
+      provisional: true,
+      estimate,
+      ranges: lthrZoneRanges(estimate.lthr),
+    }
+  }
+
+  const max = toNumber(settings.maxHr)
+  return {
+    anchor: 'max',
+    value: max,
+    basis: 'Percentage of max heart rate, which has not been tested',
+    provisional: true,
+    ranges: hrZoneRanges(max),
+  }
+}
