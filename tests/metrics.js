@@ -52,6 +52,7 @@ import {
   zoneModel,
 } from '../src/data/metrics.js'
 import { buildStudyReport } from '../src/features/progress/buildStudyReport.js'
+import { normalizeSettings, NUMERIC_BOUNDS } from '../src/settings.js'
 import {
   startOfWeek,
   endOfWeek,
@@ -886,6 +887,30 @@ check('with no usable rides it falls back to max', [fallback.anchor, fallback.va
 // The fallback is the *least* trustworthy branch, so it must never claim to be
 // settled — this is the anchor that has never been measured.
 check('and that fallback is provisional too', fallback.provisional, true)
+
+console.log('\nThreshold setting is nullable')
+// Untested is a real state, and the clamp cannot infer that on its own:
+// Number(null) is 0, which is finite, so without an explicit nullable list an
+// untested threshold sails past the guard and comes out clamped to the minimum
+// — 90 bpm presented as a measured threshold, which is worse than none.
+check('untested by default', normalizeSettings({}).lthr, null)
+check('null stays null, not 90', normalizeSettings({ lthr: null }).lthr, null)
+check('a cleared field stays null', normalizeSettings({ lthr: '' }).lthr, null)
+check('undefined stays null', normalizeSettings({ lthr: undefined }).lthr, null)
+check('a real value is kept', normalizeSettings({ lthr: 160 }).lthr, 160)
+// A typo still has to be caught — nullable is not unbounded.
+check('a typo is clamped to the floor', normalizeSettings({ lthr: 16 }).lthr, NUMERIC_BOUNDS.lthr.min)
+check('and an impossible value to the ceiling', normalizeSettings({ lthr: 900 }).lthr, NUMERIC_BOUNDS.lthr.max)
+// Nullability must not leak into the settings that are genuinely required.
+check('max HR is unaffected and still defaults', normalizeSettings({}).maxHr, 190)
+check('a blank max HR falls back to the default, not null', normalizeSettings({ maxHr: '' }).maxHr, 190)
+
+// End to end: an untested threshold must not silently become the anchor.
+const untestedModel = zoneModel({ rides: [], settings: normalizeSettings({}) })
+check('an untested threshold does not anchor the zones', untestedModel.anchor, 'max')
+const testedModel = zoneModel({ rides: [], settings: normalizeSettings({ lthr: 160 }) })
+check('a tested one does', [testedModel.anchor, testedModel.value], ['lthr', 160])
+check('and stops being provisional', testedModel.provisional, false)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

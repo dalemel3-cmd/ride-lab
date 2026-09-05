@@ -27,6 +27,18 @@ export const DEFAULT_SETTINGS = {
   maxHr: 190,
   restingHrTarget: 55,
 
+  // Lactate threshold heart rate, from a 20-minute field test.
+  //
+  // Null until tested, and null is a real answer rather than a missing one —
+  // the app falls back to the best 20 minutes on record and labels the zones
+  // provisional. See docs/THRESHOLD-TEST.md for the protocol, and zoneModel in
+  // metrics.js for what changes once this is set.
+  //
+  // Threshold rather than max is the anchor because it is the number that can
+  // actually be measured without a maximal effort, and the one that moves as
+  // fitness improves.
+  lthr: null,
+
   // The case study window.
   //
   // Null means "work it out from the data" — see resolveStudyStart in
@@ -54,9 +66,28 @@ export const NUMERIC_BOUNDS = {
   maxHr: { min: 120, max: 230 },
   restingHrTarget: { min: 30, max: 120 },
   caseStudyWeeks: { min: 1, max: 104 },
+  lthr: { min: 90, max: 220 },
 }
 
+/**
+ * Numeric settings where "not set" is a real answer, not a missing one.
+ *
+ * These have to be listed, because the clamp below cannot infer it: `Number(null)`
+ * is 0, which is finite, so an untested threshold would sail through the guard
+ * and come out clamped to the minimum — 90 bpm presented as a measured threshold,
+ * which is worse than no threshold at all.
+ */
+export const NULLABLE_NUMERIC = new Set(['lthr'])
+
 function clamp(key, value) {
+  // Absent is not zero. Number('') and Number(null) are both 0, which is
+  // finite, so an empty field used to sail past the guard below and get clamped
+  // to the *minimum* — clearing Max HR silently set it to 120, which puts
+  // essentially every ride in zone 5 and quietly invalidates every zone claim
+  // in the study. Absent means the default, or null where null is meaningful.
+  if (value === null || value === undefined || value === '') {
+    return NULLABLE_NUMERIC.has(key) ? null : DEFAULT_SETTINGS[key]
+  }
   const bounds = NUMERIC_BOUNDS[key]
   const num = Number(value)
   if (!Number.isFinite(num)) return DEFAULT_SETTINGS[key]

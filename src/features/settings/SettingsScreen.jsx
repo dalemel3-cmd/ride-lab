@@ -133,6 +133,20 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
               onBlur={commit('maxHr')}
             />
           </div>
+          <div>
+            <label htmlFor="lthr">Threshold HR (bpm)</label>
+            <input
+              id="lthr"
+              type="number"
+              inputMode="numeric"
+              placeholder="Not tested"
+              min={NUMERIC_BOUNDS.lthr.min}
+              max={NUMERIC_BOUNDS.lthr.max}
+              value={localSettings.lthr ?? ''}
+              onChange={set('lthr')}
+              onBlur={commit('lthr')}
+            />
+          </div>
           <div className="full">
             <label htmlFor="restingHrTarget">Resting HR goal (bpm)</label>
             <input
@@ -147,6 +161,17 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
             />
           </div>
         </div>
+
+        <ScienceNote title="Threshold beats max as an anchor">
+          Leave threshold blank and the zones fall back to percentages of max heart rate — a number
+          that cannot be measured without a maximal effort, barely moves as you get fitter, and
+          silently rescales every zone if it is wrong. Threshold is the better anchor on all three
+          counts: a 20-minute time trial measures it safely, it rises as your aerobic fitness
+          improves, and it sits where the physiology actually changes. Until it is set, the app uses
+          the best 20 minutes in your ride log and labels the zones provisional, because a heart
+          rate you happened to hold on a moderate ride is a floor, not a threshold.{' '}
+          <strong>The protocol is in docs/THRESHOLD-TEST.md.</strong>
+        </ScienceNote>
 
         {predicted && (
           <ScienceNote title="About max heart rate">
