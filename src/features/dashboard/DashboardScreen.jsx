@@ -14,12 +14,12 @@ import {
   hrvAutonomicBands,
   efficiencyBySurface,
   weeklyRollup,
-  hrZoneRanges,
   acwr,
   weeklyMonotony,
   polarizedAudit,
   timeInZones,
   combineZoneTimes,
+  zoneModel,
   resolveStudyStart,
   studyProgress,
   preTrainingHrv,
@@ -155,6 +155,9 @@ export default function DashboardScreen({
     return { days, ctlReady: days >= 42, acwrReady: days >= 28, monotonyReady: days >= 7 }
   }, [sortedRides])
 
+  // Zone model derived from tested LTHR, observed 20-min floor, or % of max.
+  const model = useMemo(() => zoneModel({ rides, settings }), [rides, settings])
+
   // 8. Polarized 80/20 Distribution (Recent rides with HR track)
   //
   // Sliced off `sortedRides`, not `rides`. The store hands rides back
@@ -162,8 +165,8 @@ export default function DashboardScreen({
   // card to the opening fortnight of the study permanently once the log passed
   // ten rides, while still calling itself "recent".
   const recentZones = useMemo(
-    () => combineZoneTimes(sortedRides.slice(-10).map((r) => timeInZones(r.track, settings.maxHr))),
-    [sortedRides, settings.maxHr],
+    () => combineZoneTimes(sortedRides.slice(-10).map((r) => timeInZones(r.track, model.ranges))),
+    [sortedRides, model.ranges],
   )
   const polarizedRecentAudit = useMemo(
     () => (recentZones ? polarizedAudit(recentZones) : null),
@@ -183,10 +186,8 @@ export default function DashboardScreen({
   const daysIn = progress.day
   const currentWeekNumber = progress.week
 
-  // Zone 2 Target Range. Derived from the rider's own max HR — no fallback
-  // pair of numbers, which would be someone else's zone presented as theirs.
-  const zones = hrZoneRanges(settings.maxHr)
-  const zone2 = zones[1] ?? null
+  // Zone 2 Target Range. Derived from the dynamic zone model (tested LTHR, floor, or max HR).
+  const zone2 = model.ranges[1] ?? null
 
   // Readiness styling. Neutral until there is a real score to colour.
   const glowClass =
@@ -699,11 +700,20 @@ export default function DashboardScreen({
 
       {/* Polarized Training 80/20 Distribution Gauge */}
       {polarizedRecentAudit && (
-        <PolarizedGauge
-          audit={polarizedRecentAudit}
-          title="Polarized 80/20 Intensity Audit"
-          subtitle="Recent Rides with Continuous Heart Rate"
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <PolarizedGauge
+            audit={polarizedRecentAudit}
+            title="Polarized 80/20 Intensity Audit"
+            subtitle={`Recent Rides with Continuous Heart Rate · ${model.anchor === 'lthr' ? (model.provisional ? `Observed LTHR Floor (${model.value} bpm)` : `Tested LTHR (${model.value} bpm)`) : `% of Max (${model.value} bpm)`}`}
+          />
+          {model.provisional && (
+            <div style={{ paddingLeft: 4 }}>
+              <Confidence level="provisional">
+                {model.basis}
+              </Confidence>
+            </div>
+          )}
+        </div>
       )}
 
       {/* QUICK STATUS & LAST RIDE INSIGHT */}

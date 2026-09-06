@@ -22,7 +22,6 @@ import {
   efficiencyBySurface,
   routeProgress,
   CROSS_SOURCE_DISTANCE_BIAS_PCT,
-  hrZoneRanges,
   performanceManagementChart,
   hrvAutonomicBands,
   MIN_HRV_BASELINE_SAMPLES,
@@ -30,6 +29,7 @@ import {
   substrateOxidation,
   timeInZones,
   combineZoneTimes,
+  zoneModel,
   acwr,
   weeklyMonotony,
   polarizedAudit,
@@ -161,10 +161,13 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
     [latestBody, baselineBody, latestHrvBand, hrvReference, latestPmc],
   )
 
+  // Zone model derived from tested LTHR, observed 20-min floor, or % of max.
+  const model = useMemo(() => zoneModel({ rides, settings }), [rides, settings])
+
   // Intensity distribution across every ride whose track carries heart rate.
   const studyZones = useMemo(
-    () => combineZoneTimes(rides.map((r) => timeInZones(r.track, settings.maxHr))),
-    [rides, settings.maxHr],
+    () => combineZoneTimes(rides.map((r) => timeInZones(r.track, model.ranges))),
+    [rides, model.ranges],
   )
 
   const polarizedStudyAudit = useMemo(
@@ -307,7 +310,7 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
   const currentWeek = progress.week
   const progressPct = progress.percent
 
-  const zoneRanges = hrZoneRanges(settings.maxHr)
+  const zoneRanges = model.ranges
   const midpoint = Math.floor(rpeVsHr.length / 2)
   const firstHalf = rpeVsHr.slice(0, midpoint)
   const secondHalf = rpeVsHr.slice(midpoint)
@@ -703,15 +706,29 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
       {studyZones && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {polarizedStudyAudit && (
-            <PolarizedGauge
-              audit={polarizedStudyAudit}
-              title="16-Week Polarized Training Audit"
-              subtitle="Dr. Stephen Seiler 3-Domain Intensity Distribution"
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <PolarizedGauge
+                audit={polarizedStudyAudit}
+                title="16-Week Polarized Training Audit"
+                subtitle={`Dr. Stephen Seiler 3-Domain Intensity Distribution · ${model.anchor === 'lthr' ? (model.provisional ? `Observed LTHR Floor (${model.value} bpm)` : `Tested LTHR (${model.value} bpm)`) : `% of Max (${model.value} bpm)`}`}
+              />
+              {model.provisional && (
+                <div style={{ paddingLeft: 4 }}>
+                  <Confidence level="provisional">
+                    {model.basis}
+                  </Confidence>
+                </div>
+              )}
+            </div>
           )}
 
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <h4 style={{ fontSize: 'var(--text-sm)', margin: 0 }}>5-Zone Granular Breakdown</h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+              <h4 style={{ fontSize: 'var(--text-sm)', margin: 0 }}>5-Zone Granular Breakdown</h4>
+              <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                {model.anchor === 'lthr' ? (model.provisional ? 'Floor LTHR' : 'Tested LTHR') : '% of Max'} ({model.value} bpm)
+              </span>
+            </div>
             <ZoneBar distribution={studyZones} height={14} />
           </div>
 
@@ -1351,7 +1368,17 @@ export default function ProgressScreen({ rides, bodyComp, settings, showToast })
       {/* ---------------------------------------------------------------- */}
       {zoneRanges.length > 0 && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <h3 style={{ fontSize: 'var(--text-lg)' }}>Your heart rate zones</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+            <h3 style={{ fontSize: 'var(--text-lg)' }}>Your heart rate zones</h3>
+            <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+              Anchor: {model.anchor === 'lthr' ? (model.provisional ? `Observed LTHR Floor (${model.value} bpm)` : `Tested LTHR (${model.value} bpm)`) : `Max HR (${model.value} bpm)`}
+            </span>
+          </div>
+          {model.provisional && (
+            <Confidence level="provisional">
+              {model.basis}
+            </Confidence>
+          )}
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {zoneRanges.map((zone) => (
               <div key={zone.zone} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>

@@ -29,7 +29,7 @@ import RouteMap from './RouteMap.jsx'
 
 const DRAFT_KEY = 'ridelab_active_recording'
 
-export default function RecordRide({ onFinish, onCancel, maxHr }) {
+export default function RecordRide({ onFinish, onCancel, maxHr, zoneRanges }) {
   const [state, setState] = useState('idle') // idle | recording | paused
   const [track, setTrack] = useState([])
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -88,7 +88,7 @@ export default function RecordRide({ onFinish, onCancel, maxHr }) {
 
   // hrZone returns the whole zone descriptor — number, label, colour, and what
   // it does physiologically — so the readout can explain itself mid-ride.
-  const zone = heartRate != null && maxHr ? hrZone(heartRate, maxHr) : null
+  const zone = heartRate != null && (zoneRanges || maxHr) ? hrZone(heartRate, zoneRanges || maxHr) : null
   const zoneColor = zone?.color ?? 'var(--color-text-muted)'
 
   // Recover a recording interrupted by a crash, a reload, or iOS reclaiming the

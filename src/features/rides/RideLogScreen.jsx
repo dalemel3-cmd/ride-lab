@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Plus, Satellite, Trash2, Pencil, Upload } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
-import { avgSpeed, trainingLoad, hrZone, summarize, timeInZones } from '../../data/metrics.js'
+import { avgSpeed, trainingLoad, hrZone, summarize, timeInZones, zoneModel } from '../../data/metrics.js'
 import { formatDuration, formatShortDate, formatWeekRange, toDateString, toTimeString, startOfWeek, recordDate } from '../../data/dates.js'
 import { StatGrid, StatTile, EmptyState } from '../../components/ui.jsx'
 import ZoneBar from '../../components/ZoneBar.jsx'
@@ -50,6 +50,8 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
     () => filteredRides.reduce((sum, r) => sum + (rideClimbFeet(r) ?? 0), 0),
     [filteredRides],
   )
+
+  const model = useMemo(() => zoneModel({ rides, settings }), [rides, settings])
 
   const weeks = useMemo(() => {
     const grouped = new Map()
@@ -155,6 +157,7 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
           onFinish={handleRecordingFinished}
           onCancel={() => setMode('list')}
           maxHr={settings?.maxHr}
+          zoneRanges={model.ranges}
         />
       </div>
     )
@@ -340,6 +343,7 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
                 key={ride.id}
                 ride={ride}
                 settings={settings}
+                zoneRanges={model.ranges}
                 onEdit={() => {
                   setEditing(ride)
                   setMode('form')
@@ -354,12 +358,12 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
   )
 }
 
-function RideCard({ ride, settings, onEdit, onDelete }) {
+function RideCard({ ride, settings, zoneRanges, onEdit, onDelete }) {
   // Null unless the track carries per-point heart rate, which is only true for
   // rides recorded with a strap or imported from a file that had it.
   const zones = useMemo(
-    () => timeInZones(ride.track, settings.maxHr),
-    [ride.track, settings.maxHr],
+    () => timeInZones(ride.track, zoneRanges || settings?.maxHr),
+    [ride.track, zoneRanges, settings?.maxHr],
   )
   // Prefer the recorded column, but fall back to the track's own elevation.
   // Showing an em dash beside a profile that visibly climbs 200 ft is asking
@@ -368,7 +372,7 @@ function RideCard({ ride, settings, onEdit, onDelete }) {
 
   const speed = avgSpeed(ride.distance_mi, ride.duration_min)
   const load = trainingLoad(ride.rpe, ride.duration_min)
-  const zone = hrZone(ride.avg_hr, settings.maxHr)
+  const zone = hrZone(ride.avg_hr, zoneRanges || settings?.maxHr)
 
   return (
     <article className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -418,7 +422,14 @@ function RideCard({ ride, settings, onEdit, onDelete }) {
       {ride.track && <RouteMap track={ride.track} height={120} />}
       {/* Renders itself away on rides with no elevation, so older tracks and
           hand-entered rides are unaffected. */}
-      {ride.track && <ElevationProfile points={ride.track} maxHr={settings?.maxHr} height={100} />}
+      {ride.track && (
+        <ElevationProfile
+          points={ride.track}
+          maxHr={settings?.maxHr}
+          zoneRanges={zoneRanges}
+          height={100}
+        />
+      )}
 
       <div
         style={{

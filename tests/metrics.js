@@ -912,5 +912,24 @@ const testedModel = zoneModel({ rides: [], settings: normalizeSettings({ lthr: 1
 check('a tested one does', [testedModel.anchor, testedModel.value], ['lthr', 160])
 check('and stops being provisional', testedModel.provisional, false)
 
+console.log('\nhrZone and timeInZones with custom zone ranges')
+// Threshold 160: Z1 <= 129, Z2 130-144, Z3 144-150, Z4 150-160, Z5 >= 160
+const customRanges = lthrZoneRanges(160)
+check('hrZone classifies Z1 with LTHR ranges', hrZone(120, customRanges)?.zone, 1)
+check('hrZone classifies Z2 with LTHR ranges', hrZone(135, customRanges)?.zone, 2)
+check('hrZone classifies Z4 with LTHR ranges', hrZone(155, customRanges)?.zone, 4)
+check('hrZone classifies Z5 with LTHR ranges', hrZone(170, customRanges)?.zone, 5)
+
+const sampleTrack = [
+  [-94.2, 36.3, 1000, 300, 135],
+  [-94.2, 36.31, 31000, 305, 135],
+  [-94.2, 36.32, 61000, 310, 155],
+  [-94.2, 36.33, 91000, 315, 155],
+]
+const lthrDistribution = timeInZones(sampleTrack, customRanges)
+check('timeInZones produces distribution with custom ranges', Array.isArray(lthrDistribution), true)
+check('timeInZones attributes Z2 seconds with LTHR ranges', lthrDistribution?.find(z => z.zone === 2)?.seconds, 60)
+check('timeInZones attributes Z4 seconds with LTHR ranges', lthrDistribution?.find(z => z.zone === 4)?.seconds, 30)
+
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed > 0 ? 1 : 0)

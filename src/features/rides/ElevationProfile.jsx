@@ -1,3 +1,4 @@
+import { hrZone } from '../../data/metrics.js'
 import { elevationOf, heartRateOf, METERS_TO_FEET } from '../../data/track.js'
 
 /**
@@ -11,7 +12,7 @@ import { elevationOf, heartRateOf, METERS_TO_FEET } from '../../data/track.js'
  * being decoration: it shows exactly where on a climb the effort actually went,
  * and whether the same climb costs fewer beats four months later.
  */
-export default function ElevationProfile({ points, maxHr, height = 120 }) {
+export default function ElevationProfile({ points, maxHr, zoneRanges, height = 120 }) {
   const usable = Array.isArray(points) ? points.filter((p) => elevationOf(p) !== null) : []
 
   // Two points make a line but not a profile, and a flat line tells the rider
@@ -39,13 +40,12 @@ export default function ElevationProfile({ points, maxHr, height = 120 }) {
 
   // Colour each step by the heart-rate zone it was ridden in, when known.
   const zoneColor = (hr) => {
-    if (hr === null || !maxHr) return null
-    const pct = hr / maxHr
-    if (pct < 0.6) return 'var(--zone-1)'
-    if (pct < 0.7) return 'var(--zone-2)'
-    if (pct < 0.8) return 'var(--zone-3)'
-    if (pct < 0.9) return 'var(--zone-4)'
-    return 'var(--zone-5)'
+    if (hr === null) return null
+    if (zoneRanges || maxHr) {
+      const z = hrZone(hr, zoneRanges || maxHr)
+      return z?.color ?? null
+    }
+    return null
   }
 
   const hasHr = usable.some((p) => heartRateOf(p) !== null)

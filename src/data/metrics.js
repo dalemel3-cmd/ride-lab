@@ -103,11 +103,26 @@ export const HR_ZONES = [
   },
 ]
 
-/** Which zone a heart rate falls in, given a max. Null if either is unusable. */
-export function hrZone(hr, maxHr) {
+/** Which zone a heart rate falls in, given a max HR or an array of zone ranges. Null if unusable. */
+export function hrZone(hr, maxHrOrRanges) {
   const h = toNumber(hr)
-  const max = toNumber(maxHr)
-  if (h === null || max === null || max <= 0 || h <= 0) return null
+  if (h === null || h <= 0) return null
+
+  if (Array.isArray(maxHrOrRanges) && maxHrOrRanges.length > 0) {
+    const ranges = maxHrOrRanges
+    if (h < ranges[0].lowBpm) return ranges[0]
+    for (let i = 0; i < ranges.length; i += 1) {
+      const z = ranges[i]
+      const next = ranges[i + 1]
+      if (next ? h < next.lowBpm : h <= z.highBpm || i === ranges.length - 1) {
+        return z
+      }
+    }
+    return ranges[ranges.length - 1]
+  }
+
+  const max = toNumber(maxHrOrRanges)
+  if (max === null || max <= 0) return null
   const pct = h / max
   // Below zone 1 is still, functionally, zone 1 for our purposes.
   if (pct < HR_ZONES[0].min) return HR_ZONES[0]
@@ -264,16 +279,20 @@ export function beatsPerMile(avgHrValue, durationMin, distanceMi) {
  * Returns null when the track carries no heart rate, rather than five zeroes
  * that would read as "no time in any zone".
  */
-export function timeInZones(track, maxHrValue) {
-  const max = toNumber(maxHrValue)
-  if (!Array.isArray(track) || track.length < 2 || max === null || max <= 0) return null
+export function timeInZones(track, maxHrOrRanges) {
+  if (!Array.isArray(track) || track.length < 2) return null
+  const isRanges = Array.isArray(maxHrOrRanges) && maxHrOrRanges.length > 0
+  const max = isRanges ? null : toNumber(maxHrOrRanges)
+  if (!isRanges && (max === null || max <= 0)) return null
+
+  const targetRanges = isRanges ? maxHrOrRanges : HR_ZONES
 
   // A gap longer than this is a pause, a tunnel, or a dropped sensor — not time
   // spent at the last-known heart rate. Counting it would attribute a coffee
   // stop to whatever zone the rider was in when they stopped.
   const MAX_GAP_SEC = 60
 
-  const seconds = new Map(HR_ZONES.map((z) => [z.zone, 0]))
+  const seconds = new Map(targetRanges.map((z) => [z.zone, 0]))
   let total = 0
 
   for (let i = 1; i < track.length; i += 1) {
@@ -287,22 +306,22 @@ export function timeInZones(track, maxHrValue) {
     const gap = (t2 - t1) / 1000
     if (!(gap > 0) || gap > MAX_GAP_SEC) continue
 
-    const z = hrZone(hr, max)
+    const z = hrZone(hr, maxHrOrRanges)
     if (!z) continue
 
-    seconds.set(z.zone, seconds.get(z.zone) + gap)
+    seconds.set(z.zone, (seconds.get(z.zone) || 0) + gap)
     total += gap
   }
 
   if (total <= 0) return null
 
-  return HR_ZONES.map((z) => ({
+  return targetRanges.map((z) => ({
     zone: z.zone,
     label: z.label,
     color: z.color,
     effect: z.effect,
-    seconds: Math.round(seconds.get(z.zone)),
-    percent: Math.round((seconds.get(z.zone) / total) * 100),
+    seconds: Math.round(seconds.get(z.zone) || 0),
+    percent: Math.round(((seconds.get(z.zone) || 0) / total) * 100),
   }))
 }
 
