@@ -393,7 +393,7 @@ h3 {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  min-height: 38px;
+  min-height: var(--tap-target);
   transition: all 0.15s ease;
 }
 

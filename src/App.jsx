@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, Bike, HeartPulse, NotebookPen, Repeat, TrendingUp, Settings as SettingsIcon, RotateCw } from 'lucide-react'
+import { Activity, CalendarCheck, Bike, HeartPulse, NotebookPen, Repeat, TrendingUp, Settings as SettingsIcon, RotateCw } from 'lucide-react'
 import { loadTable, syncQueue, queueLength, TABLES } from './data/store.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { APP_VERSION } from './version.js'
@@ -7,6 +7,7 @@ import { APP_VERSION } from './version.js'
 // Each screen is split out so the first paint on a phone only pays for the one
 // being looked at — Progress in particular drags in all of Recharts.
 const DashboardScreen = lazy(() => import('./features/dashboard/DashboardScreen.jsx'))
+const PlanScreen = lazy(() => import('./features/plan/PlanScreen.jsx'))
 const RideLogScreen = lazy(() => import('./features/rides/RideLogScreen.jsx'))
 const BodyCompScreen = lazy(() => import('./features/body/BodyCompScreen.jsx'))
 const JournalScreen = lazy(() => import('./features/journal/JournalScreen.jsx'))
@@ -16,6 +17,7 @@ const SettingsScreen = lazy(() => import('./features/settings/SettingsScreen.jsx
 
 const NAV = [
   { key: 'today', label: 'Today', Icon: Activity },
+  { key: 'plan', label: 'Plan', Icon: CalendarCheck },
   { key: 'rides', label: 'Rides', Icon: Bike },
   { key: 'body', label: 'Body', Icon: HeartPulse },
   { key: 'journal', label: 'Journal', Icon: NotebookPen },
@@ -394,6 +396,7 @@ export default function App() {
 
           <Suspense fallback={<p className="muted">Loading…</p>}>
             {screen === 'today' && <DashboardScreen {...shared} onNavigate={setScreen} />}
+            {screen === 'plan' && <PlanScreen {...shared} onNavigate={setScreen} />}
             {screen === 'rides' && <RideLogScreen {...shared} />}
             {screen === 'body' && <BodyCompScreen {...shared} />}
             {screen === 'journal' && <JournalScreen {...shared} />}
