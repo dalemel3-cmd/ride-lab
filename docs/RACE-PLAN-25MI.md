@@ -80,9 +80,11 @@ via Ride with GPS, not yet saved as a library route).
 | "Aerobic Foundation," strict Zone 2 | Razorback Greenway | The route's own notes call it the best place to hold steady Zone 2 |
 | **20-min LTHR field test** | Razorback Greenway, the same uninterrupted segment every time | Protocol requirement — flat, no junctions, repeatable |
 | **16-mile benchmark repeat** | Razorback Greenway, the exact original benchmark course | Must match 2026-08-23 exactly for the comparison to mean anything |
-| "Gravel Endurance Ride" (Sep 19 or 26 — pick one) | **Rough/rocky surface, not smooth gravel** | See the terrain-mismatch fix above — this is the dedicated handling session, not another volume day |
+| **Rough-surface handling (Sep 19)** | Gordon Hollow Donkey Kick, first 12–15 mi | See the terrain-mismatch fix above — this is the dedicated handling session, not another volume day |
+| **Overdistance endurance (Sep 26)** | Lunch Loop (22.5 mi), full loop | Exact distance match, fueling rehearsal |
+| **Taper gravel ride (Oct 10)** | 1B - Bentonville Trails Intro 18, trimmed to 14–16 mi | Closest distance match once trimmed short of its 17.7 mi full loop |
 | Other "Gravel Endurance" days | Brassy Pot loop, ridden to the target distance | Real gravel and real climbing, closest surface match available locally |
-| **Race Rehearsal (Oct 3)** | The actual Big Sugar 25-mile course GPX if published (check bigsugarclassic.com/gravel), otherwise the full Brassy Pot loop | Rehearsing rock/washboard you've never ridden matters more than rehearsing distance you've already proven |
+| **Race Rehearsal (Oct 3)** | The actual Big Sugar 25-mile course GPX if published (check bigsugarclassic.com/gravel), otherwise If You Want To See The Graffiti Tunnel (30.2 mi) | Rehearsing rock/washboard you've never ridden matters more than rehearsing distance you've already proven |
 | High-cadence openers | Grand Blvd | A 30-second drill — the route doesn't matter |
 | Taper-week short spins/pickups | Razorback Greenway | Easy, flat, no decisions needed in race week |
 
@@ -116,11 +118,14 @@ via Ride with GPS, not yet saved as a library route).
   - 15 min progressive warm-up $\rightarrow$ **20 min all-out time-trial pace** on uninterrupted Greenway segment $\rightarrow$ 15 min cool-down.
   - Record average HR of the 20-minute interval and enter into *Settings $\rightarrow$ Threshold HR*.
 - **Fri (Sep 18):** Complete Rest / Recovery walk.
-- **Sat (Sep 19):** ?? **Rough-surface handling session, 12–15 mi.** The
-  roughest, loosest, most technical gravel or rock reachable — not the
+- **Sat (Sep 19):** ?? **Rough-surface handling session, 12–15 mi — Gordon
+  Hollow Donkey Kick (partial).** Ride the first 12–15 mi of the full 29.3
+  mi / 1,784 ft loop (added to the route library 9/9) — the hollow terrain
+  is the closest thing in the library to genuine technical ground, not the
   Brassy Pot loop, not the Greenway. This is the dedicated rehearsal for the
   real course's terrain (see Section 0), not a volume day, so distance is
-  secondary to just riding loose rock under some fatigue.
+  secondary to just riding loose rock under some fatigue. Turn back once the
+  distance target is hit rather than closing the loop.
 - **Sun (Sep 20):** Rest. Weekly crank bolt check.
 
 #### Week 3: 16-Mile Benchmark Repeat (Sep 21 – 27)
@@ -131,7 +136,8 @@ via Ride with GPS, not yet saved as a library route).
   - Compare speed, duration, and beats-per-mile directly against August 23 baseline.
 - **Thu (Sep 24):** 8 mi Zone 1 recovery spin.
 - **Fri (Sep 25):** Rest.
-- **Sat (Sep 26):** 20–22 mi Gravel Endurance Ride (Brassy Pot loop). Ride with
+- **Sat (Sep 26):** 20–22 mi Gravel Endurance Ride — **Lunch Loop** (22.5 mi /
+  1,590 ft, added 9/9), an exact distance match for this session. Ride with
   the actual bottles/food you plan to carry on race day — not just any
   bottle, the real setup — so this is a fueling rehearsal, not just a mileage day.
 - **Sun (Sep 27):** Rest. Weekly crank bolt check.
@@ -150,8 +156,10 @@ via Ride with GPS, not yet saved as a library route).
   downloadable 25-mile course GPX — load it into Ride with GPS for tomorrow if
   it exists.
 - **Sat (Oct 3):** ?? **Race Rehearsal: 25–28 mi Gravel Ride**:
-  - Ride the actual course GPX if you found one; otherwise the full Brassy Pot
-    loop. Strict Zone 2 on flats, cap climbs at threshold (Zone 4).
+  - Ride the actual course GPX if you found one; otherwise **If You Want To
+    See The Graffiti Tunnel** (30.2 mi / 1,985 ft, added 9/9) — the closest
+    distance/terrain match in the library. Trim to 25–28 mi or complete the
+    full loop if legs allow. Strict Zone 2 on flats, cap climbs at threshold (Zone 4).
   - Ride with the **exact race-day tyre pressure, bottles/hydration setup, and
     food** — this is the fueling and equipment rehearsal, not just a distance
     day. Anything that doesn't work here gets changed with two weeks to fix
@@ -172,7 +180,9 @@ via Ride with GPS, not yet saved as a library route).
 - **Wed (Oct 7):** 8 mi easy spin.
 - **Thu (Oct 8):** Rest.
 - **Fri (Oct 9):** 6 mi easy spin.
-- **Sat (Oct 10):** 14–16 mi moderate gravel ride (Zone 2 with brief punchy efforts).
+- **Sat (Oct 10):** 14–16 mi moderate gravel ride (Zone 2 with brief punchy
+  efforts) — **1B - Bentonville Trails Intro 18** (added 9/9), trimmed a
+  couple miles short of the full 17.7 mi loop to land in the target range.
 - **Sun (Oct 11):** Rest. Weekly crank bolt check.
 
 #### Week 6: Race Week (Oct 12 – 18)
