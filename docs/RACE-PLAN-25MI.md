@@ -100,8 +100,8 @@ via Ride with GPS, not yet saved as a library route).
 | **Mon** | Sep 7 | **Complete Rest** | 0 mi | Rest | Hydrate, sleep, foam roll. |
 | **Tue** | Sep 8 | **Easy Recovery Spin** | 6–8 mi (35 min) | Zone 1 (<115 bpm) | Flat paved trail, high cadence (85–95 rpm). |
 | **Wed** | Sep 9 | **Saddle & Fit Test Ride** | 8–10 mi (45 min) | Zone 1–2 (115–130 bpm) | Test bib shorts, chamois cream, check saddle tilt. |
-| **Thu** | Sep 10 | **Aerobic Foundation** | 10–12 mi (55 min) | Zone 2 strict | Keep heart rate capped strictly in Zone 2. |
-| **Fri** | Sep 11 | **Rest / Mobility** | 0 mi | Rest | Core stability and hip flexor stretches. **Check crank bolt torque** — the left crank has come loose twice this study; check weekly from here, not just race week. |
+| **Thu** | Sep 10 | **Rest / Mobility** | 0 mi | Rest | Swapped with Friday — 365lb deadlift at RPE 8.5 plus poor sleep the night before is real systemic fatigue, not just leg soreness. Core stability and hip flexor stretches. **Check crank bolt torque** — the left crank has come loose twice this study; check weekly from here, not just race week. |
+| **Fri** | Sep 11 | **Aerobic Foundation** | 10–12 mi (55 min) | Zone 2 strict | Swapped from Thursday to give the lift and poor sleep a full night to recover from. Keep heart rate capped strictly in Zone 2 — don't chase the number if legs or HR say otherwise. |
 | **Sat** | Sep 12 | **Endurance Gravel Check**| 15–18 mi (85 min) | Zone 2 / Z3 climbs | Ride the West Texas Gravel Extravaganza loop (added to route library 9/9), but turn back at 15–18 mi rather than closing the full 26.5 mi / 1,590 ft loop — resting HR is elevated and last week stacked an RPE 8 and RPE 7 day. Test bike comfort at 1.5h; save the full loop for a later fueling/pacing rehearsal closer to race distance. |
 | **Sun** | Sep 13 | **Easy Coffee Spin / Rest**| 6–8 mi (optional) | Zone 1 | Very easy recovery pedal. |
 
