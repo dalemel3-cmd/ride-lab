@@ -236,6 +236,56 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
         </div>
       </section>
 
+      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <h3 style={{ fontSize: 'var(--text-base)' }}>Nutrition</h3>
+        <div className="field-grid">
+          <div>
+            <label htmlFor="heightIn">Height (in)</label>
+            <input
+              id="heightIn"
+              type="number"
+              inputMode="numeric"
+              placeholder="Not set"
+              min={NUMERIC_BOUNDS.heightIn.min}
+              max={NUMERIC_BOUNDS.heightIn.max}
+              value={localSettings.heightIn ?? ''}
+              onChange={set('heightIn')}
+              onBlur={commit('heightIn')}
+            />
+          </div>
+          <div>
+            <label htmlFor="sex">Sex</label>
+            <select id="sex" value={localSettings.sex ?? ''} onChange={set('sex')} onBlur={commit('sex')}>
+              <option value="">Not set</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </div>
+          <div className="full">
+            <label htmlFor="targetWeightLbs">Target weight (lbs)</label>
+            <input
+              id="targetWeightLbs"
+              type="number"
+              inputMode="numeric"
+              placeholder="Not set"
+              min={NUMERIC_BOUNDS.targetWeightLbs.min}
+              max={NUMERIC_BOUNDS.targetWeightLbs.max}
+              value={localSettings.targetWeightLbs ?? ''}
+              onChange={set('targetWeightLbs')}
+              onBlur={commit('targetWeightLbs')}
+            />
+          </div>
+        </div>
+
+        <ScienceNote title="Why height, sex, and age all matter here">
+          These three plus current weight are what Mifflin-St Jeor needs to estimate resting
+          metabolic rate — the fallback TDEE shown on Body until enough calorie-intake data has
+          been tracked to calculate the real number empirically from how your actual weight has
+          responded to what you've actually eaten. The empirical number always wins once it's
+          available; this formula only fills the gap before then.
+        </ScienceNote>
+      </section>
+
       <ConnectionsCard showToast={showToast} refresh={refresh} />
 
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

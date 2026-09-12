@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint src tests",
-    "test": "node tests/metrics.js && node tests/validation.js && node tests/track.js && node tests/recording.js && node tests/segments.js && node tests/ridewithgps.js && node tests/health.js",
+    "test": "node tests/metrics.js && node tests/validation.js && node tests/track.js && node tests/recording.js && node tests/segments.js && node tests/ridewithgps.js && node tests/health.js && node tests/tdee.js",
     "test:ui": "node tests/ui.js",
     "test:queue": "node tests/queue.js",
     "test:photos": "node tests/photos.js",
@@ -20,7 +20,8 @@
     "test:recording": "node tests/recording.js",
     "test:validation": "node tests/validation.js",
     "test:ridewithgps": "node tests/ridewithgps.js",
-    "test:health": "node tests/health.js"
+    "test:health": "node tests/health.js",
+    "test:tdee": "node tests/tdee.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",

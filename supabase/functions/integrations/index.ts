@@ -379,6 +379,12 @@ const GOOGLE_TYPES = {
   // and the real one are rarely the same here.
   hrv: { path: 'heart-rate-variability', field: 'heart_rate_variability', timeField: 'sample_time.physical_time' },
   vo2Max: { path: 'vo2-max', field: 'vo2_max', timeField: 'sample_time.physical_time' },
+  // Unconfirmed — 'nutrition' is the best guess among the candidates the
+  // `discover` action probes (see CANDIDATE_TYPES below). Run discover after
+  // reconnecting Google Health once the nutrition scope is granted, and if the
+  // real identifier differs, update this path/field to match rather than
+  // assume this guess was right.
+  calorieIntake: { path: 'nutrition', field: 'nutrition', timeField: 'sample_time.physical_time' },
 } as const
 
 const KG_TO_LBS = 2.20462
@@ -632,6 +638,25 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
           else if (value !== null) {
             notes.push(`vo2 max: ignored an out-of-range value (${value}) — field mapping may be wrong`)
           }
+        } else if (key === 'calorieIntake') {
+          // Field name unconfirmed, same as everything above — several
+          // plausible spellings tried, range-checked so a wrong field drops
+          // instead of charting garbage. One meal easily clears 1,000 kcal, so
+          // the ceiling is generous; a whole day above it is someone's total,
+          // not one entry, which is fine to sum but not to treat as a single
+          // reading if it recurs identically across a week.
+          const kcal = findNumber(point, [
+            'energyKilocalories',
+            'energy_kilocalories',
+            'kilocalories',
+            'calories',
+            'energy',
+          ])
+          if (kcal !== null && kcal > 0 && kcal <= 8000) {
+            row.calories_in = (row.calories_in ?? 0) + kcal
+          } else if (kcal !== null) {
+            notes.push(`calorie intake: ignored an out-of-range value (${kcal}) — field mapping may be wrong`)
+          }
         }
       }
     } catch (error) {
@@ -655,6 +680,7 @@ async function syncGoogleHealth(admin: ReturnType<typeof adminClient>, userId: s
       resting_hr: v.resting_hr ?? null,
       hrv_ms: v.hrv_ms ?? null,
       vo2_max: v.vo2_max ?? null,
+      calories_in: v.calories_in != null ? Math.round(v.calories_in) : null,
       // Omitted rather than set — see the note in the Fitbit sync above. An
       // upsert writes only the columns present, so leaving this out preserves
       // the rider's chosen baseline instead of clearing it on every run.
@@ -975,6 +1001,16 @@ const CANDIDATE_TYPES = [
   'active-minutes',
   'active-zone-minutes',
   'total-calories',
+  // Calorie *intake* (dietary energy, logged via a food-tracking app synced
+  // through Health Connect) is a different data type from calories burned
+  // above, and Google documents neither name nor field for it any better
+  // than it did weight or HRV — hence probing several plausible spellings
+  // rather than guessing one and importing nothing silently.
+  'nutrition',
+  'dietary-energy',
+  'calories-consumed',
+  'food',
+  'active-calories-burned',
 ]
 
 async function discoverGoogleTypes(admin: ReturnType<typeof adminClient>, userId: string) {

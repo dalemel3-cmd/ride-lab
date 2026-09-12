@@ -3,6 +3,7 @@ import { Plus, Trash2, Flag } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { trendDelta, estimateVo2Max, preTrainingHrv } from '../../data/metrics.js'
+import { empiricalTdee, formulaTdee, caloriesForTargetWeight } from '../../data/tdee.js'
 import { toDateString, formatShortDate } from '../../data/dates.js'
 import { StatGrid, StatTile, EmptyState, ScienceNote, Confidence } from '../../components/ui.jsx'
 import PhotoLog from './PhotoLog.jsx'
@@ -332,6 +333,8 @@ export default function BodyCompScreen({ bodyComp, rides = [], settings, refresh
         </section>
       )}
 
+      <TdeeCard chronological={chronological} settings={settings} />
+
       <PhotoLog showToast={showToast} />
 
       {bodyComp.length > 0 && (
@@ -391,6 +394,115 @@ export default function BodyCompScreen({ bodyComp, rides = [], settings, refresh
         </section>
       )}
     </div>
+  )
+}
+
+/**
+ * TDEE and a calorie target, from real tracked data whenever there's enough
+ * of it and the settings-based formula otherwise.
+ *
+ * The empirical estimate always wins when both are available — see
+ * data/tdee.js for why a formula cannot see how much a specific training
+ * block is actually burning.
+ */
+function TdeeCard({ chronological, settings }) {
+  const empirical = useMemo(() => empiricalTdee(chronological), [chronological])
+
+  const latestWeight = useMemo(() => {
+    for (let i = chronological.length - 1; i >= 0; i -= 1) {
+      const w = chronological[i]?.weight_lbs
+      if (w != null) return Number(w)
+    }
+    return null
+  }, [chronological])
+
+  const formula = useMemo(
+    () =>
+      formulaTdee({
+        weightLbs: latestWeight,
+        heightIn: settings.heightIn,
+        age: settings.age,
+        sex: settings.sex,
+      }),
+    [latestWeight, settings.heightIn, settings.age, settings.sex],
+  )
+
+  const tdee = empirical?.tdee ?? formula?.tdee ?? null
+
+  // weeks: 1 forces caloriesForTargetWeight to cap at its safe max rate, so
+  // this always reports the honest fastest-safe pace rather than needing a
+  // timeline input the rider hasn't been asked for.
+  const target =
+    tdee != null && latestWeight != null && settings.targetWeightLbs != null
+      ? caloriesForTargetWeight({
+          tdee,
+          currentWeightLbs: latestWeight,
+          targetWeightLbs: settings.targetWeightLbs,
+          weeks: 1,
+        })
+      : null
+
+  if (tdee == null) {
+    return (
+      <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <h3 style={{ fontSize: 'var(--text-base)' }}>Calories &amp; TDEE</h3>
+        <EmptyState>
+          Add your height and sex in Settings → Nutrition for a formula-based estimate, or keep
+          logging weight and calorie intake — once Google Health syncs enough days of both, this
+          switches to your real, measured number automatically.
+        </EmptyState>
+      </section>
+    )
+  }
+
+  return (
+    <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <h3 style={{ fontSize: 'var(--text-base)' }}>Calories &amp; TDEE</h3>
+
+      <StatGrid>
+        <StatTile label="TDEE" value={tdee} unit="kcal/day" />
+        {target && (
+          <StatTile label="Target" value={target.dailyCalories} unit="kcal/day" />
+        )}
+      </StatGrid>
+
+      {empirical ? (
+        <p className="muted" style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
+          Measured from {empirical.sampleDays} tracked days over the last {empirical.days} —
+          averaging {empirical.avgCaloriesIn} kcal/day while weight moved{' '}
+          {empirical.weightChangeLbs > 0 ? '+' : ''}
+          {empirical.weightChangeLbs} lbs.
+        </p>
+      ) : (
+        <Confidence level="provisional">
+          Formula estimate (Mifflin-St Jeor × {formula.activityLevel} activity) — not yet enough
+          tracked calorie/weight data for a measured number
+        </Confidence>
+      )}
+
+      {target && (
+        <p className="muted" style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
+          {target.capped
+            ? `Reaching ${settings.targetWeightLbs} lbs safely (capped at 1% bodyweight/week) takes about ${target.weeks} weeks at ${target.dailyCalories} kcal/day.`
+            : `${target.dailyCalories} kcal/day holds a ${Math.abs(target.weeklyChangeLbs)} lb/week ${target.weeklyChangeLbs < 0 ? 'loss' : 'gain'} toward ${settings.targetWeightLbs} lbs.`}
+        </p>
+      )}
+
+      {!target && settings.targetWeightLbs == null && (
+        <p className="muted" style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
+          Set a target weight in Settings → Nutrition to see a daily calorie target.
+        </p>
+      )}
+
+      <ScienceNote title="Why this changes as more data comes in">
+        TDEE from a formula (Mifflin-St Jeor plus an activity multiplier) is a population average —
+        it cannot see how much a specific training block is actually burning. Once{' '}
+        {empirical ? 'it has' : 'there are'} at least 10 days of tracked calorie intake alongside
+        weight, the number above switches to the empirical one: average intake minus the
+        calorie-equivalent (3,500 kcal/lb) of the weight trend over that window — the number that
+        was actually true for this rider, on this training load, rather than a guess about it.
+      </ScienceNote>
+    </section>
   )
 }
 

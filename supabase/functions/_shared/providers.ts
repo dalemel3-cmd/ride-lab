@@ -89,6 +89,12 @@ export const CONFIG = {
       'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
       'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
       'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
+      // Added for calorie-intake tracking. Same pattern as activity_and_fitness
+      // above: without this scope the nutrition data type (if the account has
+      // any) answers 403, which the `discover` action reports as "exists but
+      // not granted" rather than "no such data" — reconnecting Google Health
+      // after this change is what actually requests it.
+      'https://www.googleapis.com/auth/googlehealth.nutrition.readonly',
     ].join(' '),
     clientId: () => requiredEnv('GOOGLE_CLIENT_ID'),
     clientSecret: () => requiredEnv('GOOGLE_CLIENT_SECRET'),

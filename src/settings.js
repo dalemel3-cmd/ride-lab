@@ -52,6 +52,15 @@ export const DEFAULT_SETTINGS = {
 
   distanceUnit: 'mi',
   defaultSurface: 'singletrack',
+
+  // For the TDEE calculator (tdee.js). All null until the rider enters them —
+  // a formula-based estimate needs height and sex, and guessing either would
+  // misstate BMR enough to matter (Mifflin-St Jeor differs by roughly 5%
+  // between sexes at the same weight/height/age). None of these gate the
+  // empirical estimate, which only needs tracked calories-in and weight.
+  heightIn: null,
+  sex: null,
+  targetWeightLbs: null,
 }
 
 /**
@@ -67,6 +76,8 @@ export const NUMERIC_BOUNDS = {
   restingHrTarget: { min: 30, max: 120 },
   caseStudyWeeks: { min: 1, max: 104 },
   lthr: { min: 90, max: 220 },
+  heightIn: { min: 48, max: 84 },
+  targetWeightLbs: { min: 80, max: 400 },
 }
 
 /**
@@ -77,7 +88,7 @@ export const NUMERIC_BOUNDS = {
  * and come out clamped to the minimum — 90 bpm presented as a measured threshold,
  * which is worse than no threshold at all.
  */
-export const NULLABLE_NUMERIC = new Set(['lthr'])
+export const NULLABLE_NUMERIC = new Set(['lthr', 'heightIn', 'targetWeightLbs'])
 
 function clamp(key, value) {
   // Absent is not zero. Number('') and Number(null) are both 0, which is
