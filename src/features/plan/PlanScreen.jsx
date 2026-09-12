@@ -728,6 +728,20 @@ export default function PlanScreen({ rides = [], settings = {}, onNavigate }) {
     }
   })
 
+  // Which day cards have their notes/matched-ride detail expanded. Cards
+  // start collapsed — the meta chips (distance/duration/zone/terrain) stay
+  // visible either way, so a two-column desktop grid can show a full week at
+  // a glance without every card's full paragraph of notes filling the screen.
+  const [openDayIds, setOpenDayIds] = useState(() => new Set())
+  const toggleDayOpen = useCallback((dateStr) => {
+    setOpenDayIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(dateStr)) next.delete(dateStr)
+      else next.add(dateStr)
+      return next
+    })
+  }, [])
+
   // Dynamic zone model
   const model = useMemo(() => zoneModel({ rides, settings }), [rides, settings])
 
@@ -1108,13 +1122,15 @@ export default function PlanScreen({ rides = [], settings = {}, onNavigate }) {
               : `Phase ${activePhase} Workouts`}
           </h3>
           <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-            Tap checkbox to check off completed days
+            Tap a card to expand notes · tap the checkbox to check off completed days
           </span>
         </div>
 
+        <div className="plan-day-grid">
         {filteredDays.map((day) => {
           const isDone = completedDays.includes(day.date)
           const isToday = day.date === todayStr
+          const isOpen = openDayIds.has(day.date)
           const matchedRides = ridesByDate.get(day.date) ?? []
           const hasMatchedRide = matchedRides.length > 0
 
@@ -1151,6 +1167,17 @@ export default function PlanScreen({ rides = [], settings = {}, onNavigate }) {
                 background: isDone
                   ? 'linear-gradient(135deg, rgba(10, 30, 24, 0.7) 0%, rgba(6, 15, 26, 0.7) 100%)'
                   : undefined,
+                cursor: 'pointer',
+              }}
+              onClick={() => toggleDayOpen(day.date)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isOpen}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  toggleDayOpen(day.date)
+                }
               }}
             >
               {/* Card Header: Date + Milestone Badge + Checkbox */}
@@ -1200,7 +1227,10 @@ export default function PlanScreen({ rides = [], settings = {}, onNavigate }) {
                 {/* 44px Touch Target Checkbox */}
                 <button
                   type="button"
-                  onClick={() => toggleCompleted(day.date)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleCompleted(day.date)
+                  }}
                   aria-label={isDone ? `Mark ${day.date} incomplete` : `Mark ${day.date} completed`}
                   style={{
                     minWidth: 'var(--tap-target)',
@@ -1255,60 +1285,74 @@ export default function PlanScreen({ rides = [], settings = {}, onNavigate }) {
                 </div>
               </div>
 
-              {/* Notes */}
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 'var(--text-xs)',
-                  lineHeight: 1.5,
-                  color: 'var(--color-text-muted)',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-                  paddingTop: 8,
-                }}
-              >
-                {day.notes}
-              </p>
+              {!isOpen && (
+                <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                  {hasMatchedRide ? '✓ logged · ' : ''}Tap for notes
+                </span>
+              )}
 
-              {/* Auto-Matched Ride in Log */}
-              {hasMatchedRide && (
-                <div
-                  style={{
-                    marginTop: 4,
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(34, 211, 238, 0.08)',
-                    border: '1px solid rgba(34, 211, 238, 0.25)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: 6,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)' }}>
-                    <Bike size={14} color="var(--color-accent)" />
-                    <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
-                      Logged Activity:
-                    </span>
-                    <span style={{ color: 'var(--color-text)' }}>
-                      {matchedRides[0].route_name || 'Ride'} · {matchedRides[0].distance_mi ?? '—'} mi ·{' '}
-                      {formatDuration(matchedRides[0].duration_min)}
-                      {matchedRides[0].avg_hr ? ` · avg ${matchedRides[0].avg_hr} bpm` : ''}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ padding: '8px 12px', fontSize: 'var(--text-xs)', minHeight: 'var(--tap-target)' }}
-                    onClick={() => onNavigate('rides')}
+              {isOpen && (
+                <>
+                  {/* Notes */}
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 'var(--text-xs)',
+                      lineHeight: 1.5,
+                      color: 'var(--color-text-muted)',
+                      borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                      paddingTop: 8,
+                    }}
                   >
-                    View in Rides
-                  </button>
-                </div>
+                    {day.notes}
+                  </p>
+
+                  {/* Auto-Matched Ride in Log */}
+                  {hasMatchedRide && (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        padding: '8px 10px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'rgba(34, 211, 238, 0.08)',
+                        border: '1px solid rgba(34, 211, 238, 0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)' }}>
+                        <Bike size={14} color="var(--color-accent)" />
+                        <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
+                          Logged Activity:
+                        </span>
+                        <span style={{ color: 'var(--color-text)' }}>
+                          {matchedRides[0].route_name || 'Ride'} · {matchedRides[0].distance_mi ?? '—'} mi ·{' '}
+                          {formatDuration(matchedRides[0].duration_min)}
+                          {matchedRides[0].avg_hr ? ` · avg ${matchedRides[0].avg_hr} bpm` : ''}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ padding: '8px 12px', fontSize: 'var(--text-xs)', minHeight: 'var(--tap-target)' }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onNavigate('rides')
+                        }}
+                      >
+                        View in Rides
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </article>
           )
         })}
+        </div>
       </section>
 
       {/* SCIENCE NOTE */}

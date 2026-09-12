@@ -409,6 +409,21 @@ h3 {
   box-shadow: 0 0 14px -2px rgba(34, 211, 238, 0.3);
 }
 
+/* Plan screen day cards: single column on a phone, two columns once there's
+   room to actually use it, matching the sidebar/app-main desktop breakpoint. */
+.plan-day-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .plan-day-grid {
+    grid-template-columns: repeat(2, 1fr);
+    align-items: start;
+  }
+}
+
 /* 1-Tap Hero GPX Dropzone */
 .gpx-hero-dropzone {
   display: flex;
