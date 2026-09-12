@@ -380,6 +380,16 @@ h3 {
   display: none;
 }
 
+/* On a phone this genuinely needs to scroll — five phase chips don't fit.
+   On a desktop-width screen there's room to just wrap instead, so the last
+   chip stops looking sliced off at the edge with no hint it can scroll. */
+@media (min-width: 768px) {
+  .filter-chips {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
+
 .filter-chip {
   display: inline-flex;
   align-items: center;
