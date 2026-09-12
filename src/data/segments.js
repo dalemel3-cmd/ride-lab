@@ -403,6 +403,18 @@ function finalizeSegment(segment) {
   const climbed = efforts.find((e) => e.elevationGainM !== null) ?? null
   const elevationGainM = climbed?.elevationGainM ?? null
 
+  // The average across every timed effort, not just the fastest one — the
+  // number to glance at when the question is "how am I riding this stretch
+  // generally" rather than "what's my record on it".
+  const avgDurationMin =
+    timed.length > 0
+      ? Math.round((timed.reduce((sum, e) => sum + e.durationMin, 0) / timed.length) * 10) / 10
+      : null
+  const avgSpeedMph =
+    timed.length > 0
+      ? Math.round((timed.reduce((sum, e) => sum + e.speedMph, 0) / timed.length) * 10) / 10
+      : null
+
   return {
     id: segment.id,
     geometry: segment.geometry,
@@ -411,6 +423,8 @@ function finalizeSegment(segment) {
     gradePercent: gradePercent(elevationGainM, segment.distanceMi),
     efforts: efforts.map((e) => ({ ...e, isFastest: fastest !== null && e.rideId === fastest.rideId })),
     fastest,
+    avgDurationMin,
+    avgSpeedMph,
     bestVam,
     // Null rather than zero whenever there is nothing to compare: a single
     // timed effort is not evidence of a trend in either direction.

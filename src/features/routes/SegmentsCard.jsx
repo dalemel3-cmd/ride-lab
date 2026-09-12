@@ -91,19 +91,37 @@ export default function SegmentsCard({ rides, maxHr }) {
                       {segment.fastest?.durationMin != null && (
                         <> · best {segment.fastest.durationMin} min</>
                       )}
+                      {segment.avgSpeedMph != null && (
+                        <> · avg {segment.avgSpeedMph} mph</>
+                      )}
                     </span>
                   </span>
                   {isOpen ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
                 </button>
 
-                {/* Only claim a trend when there are two timed efforts to compare. */}
+                {/* Only claim a trend when there are two timed efforts to compare.
+                    This lives outside the expanded block on purpose — it's the
+                    one line that answers "did I beat this segment" without
+                    opening the card, which is the whole point of scanning a
+                    list of them. A tinted chip reads faster at a glance down
+                    the list than plain colored text did. */}
                 {segment.timeChangeMin !== null && (
                   <div
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      alignSelf: 'flex-start',
+                      padding: '3px 10px',
+                      borderRadius: 999,
                       fontSize: 'var(--text-xs)',
+                      fontWeight: 600,
                       color: improving ? 'var(--status-success)' : 'var(--color-text-muted)',
+                      background: improving ? 'rgba(52, 211, 153, 0.12)' : 'rgba(138, 164, 189, 0.1)',
+                      border: `1px solid ${improving ? 'rgba(52, 211, 153, 0.35)' : 'var(--color-border)'}`,
                     }}
                   >
+                    {improving ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                     {improving
                       ? `${Math.abs(segment.timeChangeMin)} min faster than your first effort`
                       : `${segment.timeChangeMin} min vs your first effort`}
