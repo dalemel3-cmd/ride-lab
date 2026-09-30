@@ -135,7 +135,11 @@ async function main() {
   console.log('\nApp shell')
   await page.goto(APP_URL, { waitUntil: 'networkidle' })
   await page.waitForSelector('.bottom-nav', { timeout: 15000 })
-  check('bottom nav has seven destinations', await page.locator('.nav-item').count(), 7)
+  // Seven destinations plus Settings, which the next check pins down. This
+  // counts rendered `.nav-item`s, not `NAV`, so adding a tab has to be a
+  // deliberate decision here too — the Plan tab was added without one and left
+  // this assertion failing.
+  check('bottom nav has seven destinations plus settings', await page.locator('.nav-item').count(), 8)
   // Settings used to be reachable only from the sidebar, which is display:none
   // below 768px — so on a phone the only way in was typing the #settings hash.
   check(
