@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Printer } from 'lucide-react'
-import { formatShortDate, formatWeekRange, formatDuration } from '../../data/dates.js'
+import { formatShortDate, formatWeekRange, formatDuration, toDateString } from '../../data/dates.js'
 
 /**
  * The case study as a document, laid out for paper.
@@ -75,7 +75,10 @@ export default function StudyReport({
     }
   }, [onClose])
 
-  const generated = new Date().toISOString().slice(0, 10)
+  // Program timezone, not UTC: a report printed at 8pm Central was stamped
+  // with tomorrow's date, which in a dated case study reads as a transcription
+  // error in the one artefact meant to be shown to someone else.
+  const generated = toDateString()
   const provisional = (ready, needDays) =>
     ready ? null : `provisional — ${maturity.days}d of ${needDays}d history`
 

@@ -334,9 +334,21 @@ h3 {
    -------------------------------------------------------------------------- */
 
 .card {
-  background: rgba(11, 26, 43, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  /* Deliberately not blurred.
+   *
+   * `backdrop-filter` promotes an element to its own compositing layer and makes
+   * the browser re-sample and re-blur everything behind it on every repaint. A
+   * card is the wrapper for every form in the app — RideForm and the journal
+   * entry form are themselves `.card` — so each keystroke in a text field
+   * repainted a full-screen blurred surface. On an iPad that is felt directly:
+   * characters arrive behind the finger.
+   *
+   * The background below is opaque enough (0.85 -> 0.96) to read as the same
+   * frosted panel against the page gradient without sampling it. The one
+   * surface that keeps its blur is `.pull-to-refresh-pill`, which is small,
+   * short-lived and holds no input.
+   */
+  background: rgba(11, 26, 43, 0.96);
   border: 1px solid rgba(30, 56, 83, 0.8);
   border-radius: var(--radius-lg);
   padding: 16px;

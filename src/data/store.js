@@ -15,6 +15,7 @@
  */
 
 import { supabase } from '../supabaseClient.js'
+import { toDateString } from './dates.js'
 
 export const TABLES = {
   rides: 'rides',
@@ -416,7 +417,7 @@ export function downloadExport() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `ride-lab-export-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `ride-lab-export-${toDateString()}.json`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

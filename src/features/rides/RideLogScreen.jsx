@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { Plus, Satellite, Trash2, Pencil, Upload } from 'lucide-react'
 import { saveRow, deleteRow, TABLES, queueLength } from '../../data/store.js'
 import { avgSpeed, trainingLoad, hrZone, summarize, timeInZones, zoneModel } from '../../data/metrics.js'
@@ -75,15 +75,26 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
     refresh()
   }
 
-  async function handleDelete(ride) {
-    if (!window.confirm(`Delete the ${formatShortDate(recordDate(ride))} ride?`)) {
-      return
-    }
-    await deleteRow(TABLES.rides, ride.id)
-    setPending(queueLength())
-    showToast('Ride deleted')
-    refresh()
-  }
+  // These two are passed to every RideCard, so they are wrapped rather than
+  // recreated inline: a fresh function identity each render would defeat the
+  // memo on the card and re-render the whole log on any state change here.
+  const handleDelete = useCallback(
+    async (ride) => {
+      if (!window.confirm(`Delete the ${formatShortDate(recordDate(ride))} ride?`)) {
+        return
+      }
+      await deleteRow(TABLES.rides, ride.id)
+      setPending(queueLength())
+      showToast('Ride deleted')
+      refresh()
+    },
+    [setPending, showToast, refresh],
+  )
+
+  const handleEdit = useCallback((ride) => {
+    setEditing(ride)
+    setMode('form')
+  }, [])
 
   function handleRecordingFinished({ track, distanceMi, durationMin, avgHr, maxHr, elevationFt }) {
     // Hand the measured numbers to the manual form so RPE — the one thing no
@@ -344,11 +355,8 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
                 ride={ride}
                 settings={settings}
                 zoneRanges={model.ranges}
-                onEdit={() => {
-                  setEditing(ride)
-                  setMode('form')
-                }}
-                onDelete={() => handleDelete(ride)}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
               />
             ))}
           </section>
@@ -358,7 +366,17 @@ export default function RideLogScreen({ rides, settings, refresh, showToast, set
   )
 }
 
-function RideCard({ ride, settings, zoneRanges, onEdit, onDelete }) {
+/**
+ * One ride in the log.
+ *
+ * Memoized because the log is the longest list in the app — sixteen weeks of
+ * riding — and every card runs `timeInZones` over the ride's full track. Without
+ * this, switching the weekday/weekend filter or returning from the form
+ * re-rendered and re-reconciled every card on screen. The props are kept
+ * referentially stable in the parent for the same reason; `onEdit`/`onDelete`
+ * take the ride as an argument rather than closing over it.
+ */
+const RideCard = memo(function RideCard({ ride, settings, zoneRanges, onEdit, onDelete }) {
   // Null unless the track carries per-point heart rate, which is only true for
   // rides recorded with a strap or imported from a file that had it.
   const zones = useMemo(
@@ -391,7 +409,7 @@ function RideCard({ ride, settings, zoneRanges, onEdit, onDelete }) {
             // hard something felt, and it carries most of the training-load
             // signal — so it is worth actively asking for.
             <button
-              onClick={onEdit}
+              onClick={() => onEdit(ride)}
               style={{
                 marginTop: 4,
                 padding: '2px 8px',
@@ -408,10 +426,10 @@ function RideCard({ ride, settings, zoneRanges, onEdit, onDelete }) {
             </button>
           )}
         </div>
-        <button className="btn" style={{ padding: 8, minHeight: 'var(--tap-target)' }} onClick={onEdit} aria-label="Edit ride">
+        <button className="btn" style={{ padding: 8, minHeight: 'var(--tap-target)' }} onClick={() => onEdit(ride)} aria-label="Edit ride">
           <Pencil size={16} aria-hidden="true" />
         </button>
-        <button className="btn" style={{ padding: 8, minHeight: 'var(--tap-target)' }} onClick={onDelete} aria-label="Delete ride">
+        <button className="btn" style={{ padding: 8, minHeight: 'var(--tap-target)' }} onClick={() => onDelete(ride)} aria-label="Delete ride">
           <Trash2 size={16} aria-hidden="true" />
         </button>
       </div>
@@ -461,7 +479,7 @@ function RideCard({ ride, settings, zoneRanges, onEdit, onDelete }) {
       )}
     </article>
   )
-}
+})
 
 function Metric({ label, value, color }) {
   return (

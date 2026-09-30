@@ -5,7 +5,7 @@
  * without a browser and reviewable in isolation from React rendering.
  */
 
-import { formatDuration } from '../../data/dates.js'
+import { formatDuration, toDateString } from '../../data/dates.js'
 import { MIN_HRV_BASELINE_SAMPLES } from '../../data/metrics.js'
 
 export function buildStudyReport({
@@ -59,7 +59,7 @@ export function buildStudyReport({
 
   const lines = [
     `# 16-Week Cycling Physiological Case Study Report`,
-    `**Generated:** ${new Date().toISOString().slice(0, 10)} | **Study Week:** ${currentWeek} of ${settings.caseStudyWeeks ?? 16}`,
+    `**Generated:** ${toDateString()} | **Study Week:** ${currentWeek} of ${settings.caseStudyWeeks ?? 16}`,
     ``,
     // Stated once, at the top, so no reader has to infer it from a number
     // that looks alarming.
