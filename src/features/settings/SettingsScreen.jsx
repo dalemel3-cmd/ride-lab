@@ -12,7 +12,6 @@ import {
 import { predictedMaxHr } from '../../data/metrics.js'
 import { NUMERIC_BOUNDS, SURFACES } from '../../settings.js'
 import { ScienceNote } from '../../components/ui.jsx'
-import ConnectionsCard from './ConnectionsCard.jsx'
 import MetricGuide from '../../components/MetricGuide.jsx'
 import { APP_VERSION } from '../../version.js'
 
@@ -285,8 +284,6 @@ export default function SettingsScreen({ settings, onUpdateSettings, showToast, 
           available; this formula only fills the gap before then.
         </ScienceNote>
       </section>
-
-      <ConnectionsCard showToast={showToast} refresh={refresh} />
 
       <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 style={{ fontSize: 'var(--text-base)' }}>Data</h3>
